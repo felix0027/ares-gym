@@ -1,0 +1,19 @@
+{
+  "name": "ARES GYM",
+  "short_name": "ARES GYM",
+  "description": "Seus treinos, cargas e evolução.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#080808",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
