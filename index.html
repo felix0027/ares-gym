@@ -104,7 +104,441 @@ select:focus-visible {
   background: #e53935;
   color: #fff;
 }
+/* ===== ARES GYM — PREMIUM RED EDITION ===== */
 
+:root {
+  --accent: #ff3038;
+  --accent-soft: #ff30381c;
+  --bg: #080808;
+  --panel: #111113;
+  --panel2: #19191c;
+  --line: #29292e;
+  --muted: #96969f;
+  --text: #f7f7fa;
+  --radius: 20px;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 50% -15%, #401014 0%, transparent 45%),
+    #080808;
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+}
+
+.app {
+  max-width: 780px;
+}
+
+header {
+  padding-top: 28px;
+  padding-bottom: 26px;
+}
+
+.mark {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ff4148, #a80d17);
+  color: #fff;
+  border: 1px solid #ff6268;
+  box-shadow: 0 0 28px #ff303826;
+  font-size: 26px;
+  font-weight: 950;
+  font-style: italic;
+}
+
+.brand h1 {
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: .15em;
+}
+
+.brand p {
+  color: #ff555b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .23em;
+}
+
+.date {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+
+main {
+  gap: 18px;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 24px;
+  border: 1px solid #5b2428;
+  border-radius: 26px;
+  background:
+    radial-gradient(ellipse at 100% 0%, #6b161d66, transparent 48%),
+    linear-gradient(145deg, #1b1113, #0e0e10 65%);
+  box-shadow: 0 18px 50px #0005;
+}
+
+.hero::after {
+  content: "ARES";
+  position: absolute;
+  right: -8px;
+  bottom: -24px;
+  color: #ffffff06;
+  font-size: 100px;
+  font-weight: 1000;
+  letter-spacing: -.08em;
+  pointer-events: none;
+}
+
+.eyebrow {
+  color: #ff5a60;
+  font-weight: 800;
+  font-size: 10px;
+  letter-spacing: .19em;
+}
+
+.hero h2 {
+  position: relative;
+  z-index: 1;
+  font-size: clamp(30px, 7vw, 42px);
+  font-weight: 900;
+  letter-spacing: -.055em;
+}
+
+.hero p {
+  position: relative;
+  z-index: 1;
+  color: #b9b9c1;
+  max-width: 440px;
+  line-height: 1.7;
+}
+
+.btn {
+  border: 1px solid #ff484f;
+  border-radius: 13px;
+  padding: 13px 17px;
+  background: linear-gradient(135deg, #ff4148, #d71925);
+  color: white;
+  font-weight: 800;
+  box-shadow: 0 5px 18px #ff30381a;
+  transition: transform .18s ease, filter .18s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.12);
+}
+
+.btn:active {
+  transform: scale(.97);
+}
+
+.btn.secondary {
+  background: #1b1b1f;
+  border-color: #35353c;
+  color: #f7f7fa;
+  box-shadow: none;
+}
+
+.btn.ghost {
+  background: transparent;
+  border-color: #393940;
+  color: #e6e6eb;
+  box-shadow: none;
+}
+
+.btn.small {
+  padding: 9px 12px;
+  font-size: 12px;
+}
+
+.stats {
+  gap: 10px;
+}
+
+.stat,
+.card,
+.exercise {
+  background: linear-gradient(145deg, #151518, #101012);
+  border: 1px solid #29292e;
+  border-radius: 19px;
+  box-shadow: 0 8px 24px #0002;
+  transition: border-color .2s ease, transform .2s ease;
+}
+
+.stat {
+  min-width: 0;
+  padding: 17px 14px;
+}
+
+.stat .label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .055em;
+  line-height: 1.5;
+}
+
+.stat .value {
+  color: #fff;
+  font-size: 27px;
+  font-weight: 900;
+  letter-spacing: -.05em;
+}
+
+.stat .sub {
+  font-size: 10px;
+}
+
+.section-title {
+  font-size: 17px;
+  font-weight: 850;
+  letter-spacing: -.025em;
+}
+
+.stack {
+  gap: 12px;
+}
+
+.exercise {
+  padding: 16px;
+  border-radius: 17px;
+}
+
+.exercise h3 {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.exercise p {
+  color: #a2a2ac;
+}
+
+.field label {
+  font-weight: 800;
+  letter-spacing: .04em;
+}
+
+.field input,
+.field select,
+.wide-input,
+.meal-row input,
+#proteinGoal {
+  background: #09090b !important;
+  border: 1px solid #34343b !important;
+  border-radius: 11px !important;
+  color: #fff !important;
+  transition: border-color .2s ease;
+}
+
+.field input:focus,
+.field select:focus,
+.wide-input:focus,
+.meal-row input:focus,
+#proteinGoal:focus {
+  border-color: var(--accent) !important;
+  outline: none;
+}
+
+.pills {
+  gap: 9px;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+
+.pill {
+  background: #141417;
+  border: 1px solid #303036;
+  border-radius: 12px;
+  color: #b7b7c0;
+  font-weight: 700;
+  padding: 11px 14px;
+}
+
+.pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 5px 18px #ff303826;
+}
+
+.checkline {
+  color: #e7e7eb;
+}
+
+.checkline input {
+  accent-color: var(--accent);
+}
+
+.progress {
+  height: 8px;
+  background: #29292e;
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.progress div,
+.bar {
+  background: linear-gradient(90deg, #c81420, #ff4148);
+  border-radius: inherit;
+}
+
+.chart {
+  gap: 10px;
+}
+
+.bar {
+  box-shadow: 0 0 12px #ff30381a;
+}
+
+.barval {
+  font-weight: 800;
+}
+
+.barlabel {
+  font-size: 10px;
+}
+
+.empty {
+  background: #111114;
+  border: 1px dashed #393940;
+  border-radius: 17px;
+  padding: 24px 18px;
+}
+
+.meal-row {
+  border-color: #29292e;
+  padding: 14px 0;
+}
+
+.meal-row strong {
+  font-weight: 800;
+}
+
+.notice {
+  line-height: 1.7;
+  color: #90909a;
+}
+
+.timer {
+  padding: 28px 16px;
+}
+
+.timer-number {
+  color: #fff;
+  font-weight: 900;
+  text-shadow: 0 0 30px #ff30381c;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-presets button {
+  background: #19191d;
+  border: 1px solid #35353b;
+  border-radius: 11px;
+  color: #e9e9ed;
+  font-weight: 750;
+}
+
+.timer-presets button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.nav {
+  background: #0c0c0df2;
+  border-top: 1px solid #29292e;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.nav-inner {
+  max-width: 780px;
+}
+
+.nav button {
+  color: #85858f;
+  font-size: 10px;
+  font-weight: 700;
+  transition: color .2s ease;
+}
+
+.nav button.active {
+  color: #ff555b;
+}
+
+.nav button.active span {
+  background: #ff3038;
+  color: white;
+  border-radius: 11px;
+  box-shadow: 0 4px 15px #ff303826;
+}
+
+.toast {
+  background: #19191d;
+  border: 1px solid #ff4148;
+  border-radius: 13px;
+  color: white;
+  box-shadow: 0 10px 35px #0008;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #ff4148;
+  outline-offset: 3px;
+}
+
+::selection {
+  background: #ff3038;
+  color: white;
+}
+
+@media (hover: hover) {
+  .stat:hover,
+  .card:hover,
+  .exercise:hover {
+    border-color: #573035;
+    transform: translateY(-2px);
+  }
+}
+
+@media (max-width: 380px) {
+  .app {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .hero {
+    padding: 23px 18px;
+  }
+
+  .stat {
+    padding: 14px 11px;
+  }
+
+  .stat .value {
+    font-size: 23px;
+  }
+
+  .fields {
+    gap: 6px;
+  }
+
+  .field input {
+    padding: 10px 6px;
+  }
+
+  .nav button {
+    font-size: 9px;
+  }
+}
 </style>
 </head>
 <body>
