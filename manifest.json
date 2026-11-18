@@ -1,12 +1,12 @@
 {
   "name": "ARES GYM",
   "short_name": "ARES GYM",
-  "description": "Seus treinos, cargas e evolução.",
+  "description": "Treinos, dietas e evolução com seu professor.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#080808",
-  "theme_color": "#080808",
+  "background_color": "#0b0b0c",
+  "theme_color": "#0b0b0c",
   "lang": "pt-BR",
   "icons": [
     {
