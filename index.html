@@ -17,7 +17,7 @@
 </head>
 <body>
 
-<div id="splash" class="splash"><div class="logo">A</div><div id="splashMsg"></div></div>
+<div id="splash" class="splash"><div class="logo">A</div><div id="splashMsg" style="max-width:340px;padding:0 20px;line-height:1.7"></div></div>
 
 <div id="auth" class="auth hidden"><div class="auth-card" id="authCard"></div></div>
 
@@ -114,7 +114,24 @@
 
 <div class="sheet hidden" id="sheet"><div class="sheet-bg" data-act="closeSheet"></div><div class="sheet-body" id="sheetBody" role="dialog" aria-modal="true"></div></div>
 
-<script>setTimeout(function(){if(!window.__ares){var m=document.getElementById('splashMsg');if(m)m.textContent='Carregando… confira sua conexão com a internet.'}},6000)</script>
+<script>
+window.__errs=[];
+window.addEventListener('error',function(e){window.__errs.push(e.message||'falha ao carregar um arquivo')});
+window.addEventListener('unhandledrejection',function(e){window.__errs.push(String((e.reason&&e.reason.message)||e.reason))});
+function diag(){
+ var box=document.getElementById('splashMsg');if(!box)return;
+ var files=['app.js','util.js','firebase-config.js','style.css'];
+ Promise.all(files.map(function(f){return fetch(f,{cache:'no-store'}).then(function(r){return r.text().then(function(t){var ok=r.ok,hint='';
+   if(f==='firebase-config.js'&&ok){if(!/export/.test(t))hint=' — falta a palavra "export" no início';else if(/COLE_AQUI/.test(t))hint=' — ainda tem COLE_AQUI'}
+   return f+(ok?' ✓':' ✗ não encontrado ('+r.status+')')+hint})}).catch(function(){return f+' ✗ falhou'})})).then(function(l){
+  box.textContent='';var t=document.createElement('div');t.style.cssText='font-weight:700;color:var(--text);margin-bottom:10px';t.textContent='Não foi possível iniciar o app.';box.appendChild(t);
+  l.forEach(function(x){var d=document.createElement('div');d.textContent=x;box.appendChild(d)});
+  if(window.__errs.length){var e=document.createElement('div');e.style.cssText='margin-top:12px;font-size:11px;opacity:.8';e.textContent=window.__errs.join(' | ');box.appendChild(e)}
+  var n=document.createElement('div');n.style.cssText='margin-top:12px;font-size:11px';n.textContent='Todos os arquivos devem estar na mesma pasta do index.html. Depois, atualize a página (Ctrl+F5).';box.appendChild(n);
+ });
+}
+setTimeout(function(){if(!window.__ares)diag()},5000);
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>
