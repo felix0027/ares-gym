@@ -1,4 +1,4 @@
-const CACHE = 'ares-gym-v3';
+const CACHE = 'ares-gym-v4';
 const MEDIA = 'ares-media-v1';
 const FILES = ['./', './index.html', './style.css', './app.js', './util.js', './firebase-config.js', './manifest.json', './icon.svg'];
 const MAX_MEDIA = 600;
