@@ -1,12 +1,15 @@
 // ARES GYM — aplicativo (login, professor, aluno e administrador)
-import { firebaseConfig } from './firebase-config.js';
 import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, writeBatch, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-import { $, esc, num, fmt, pad, keyOf, todayKey, parseKey, mondayOf, normalize, ago, uid, mmss, clean, initial, ic, lineChart, dayLabel, mus, eqp, LV, CAT, FORCE, MUSCLE_CHIPS, X, loadDB, retryDB, searchDB, scoreEx, rank, toGroups, exName, exInstr, hasPT, exFor, demoHTML } from './Util.js';
+import { $, esc, num, fmt, pad, keyOf, todayKey, parseKey, mondayOf, normalize, ago, uid, mmss, clean, initial, ic, lineChart, dayLabel, mus, eqp, LV, CAT, FORCE, MUSCLE_CHIPS, X, loadDB, retryDB, searchDB, scoreEx, rank, toGroups, exName, exInstr, hasPT, exFor, demoHTML } from './util.js';
 
 window.__ares = 1;
-const CONFIGURED = !/COLE_AQUI/.test(firebaseConfig.apiKey || 'COLE_AQUI');
+// lê as chaves sem quebrar o app se o arquivo estiver faltando ou mal colado
+let firebaseConfig = {}, CFG_ERR = '';
+try { const m = await import('./firebase-config.js'); firebaseConfig = m.firebaseConfig || m.default || {}; if (!m.firebaseConfig && !m.default) CFG_ERR = 'O arquivo firebase-config.js precisa começar com: export const firebaseConfig = { ... }' }
+catch (e) { CFG_ERR = 'Não foi possível ler o firebase-config.js (' + (e && e.message || e) + ').' }
+const CONFIGURED = !CFG_ERR && !/COLE_AQUI/.test(firebaseConfig.apiKey || 'COLE_AQUI');
 let app, auth, db;
 if (CONFIGURED) {
   app = initializeApp(firebaseConfig); auth = getAuth(app);
@@ -50,7 +53,7 @@ function setTheme(t) { document.documentElement.dataset.theme = t; try { localSt
 function renderAuth(mode = 'login', msg = '', ok = '') {
   showScreen('auth'); const c = $('authCard'); let h = '<div class="logo">A</div>';
   if (!CONFIGURED) {
-    h += `<div><h1>Falta configurar</h1></div><p class="sub">O site já está pronto, mas ainda não está ligado ao Firebase (o banco de dados com os logins).</p><div class="auth-ok">Siga o passo a passo do arquivo <b>COMO-CONFIGURAR.md</b> e cole as chaves em <b>firebase-config.js</b>. Leva uns 10 minutos.</div>`;
+    h += `<div><h1>Falta configurar</h1></div><p class="sub">O site já está pronto, mas ainda não está ligado ao Firebase (o banco de dados com os logins).</p><div class="auth-ok">${CFG_ERR ? esc(CFG_ERR) : 'Siga o passo a passo do arquivo <b>COMO-CONFIGURAR.md</b> e cole as chaves em <b>firebase-config.js</b>. Leva uns 10 minutos.'}</div>`;
   } else if (mode === 'login') {
     h += `<div><h1>Entrar</h1></div><p class="sub">Acesse seus treinos, dietas e evolução.</p>
     <form class="stack" data-form="login"><div class="field"><label>E-MAIL OU USUÁRIO</label><input id="aLogin" class="wide-input" autocomplete="username" autocapitalize="none" autocorrect="off" required></div>
