@@ -1,6 +1,6 @@
-const CACHE = 'ares-gym-v4';
+const CACHE = 'ares-gym-v5';
 const MEDIA = 'ares-media-v1';
-const FILES = ['./', './index.html', './style.css', './app.js', './util.js', './firebase-config.js', './manifest.json', './icon.svg'];
+const FILES = ['./', './index.html', './style.css', './app.js', './util.js', './extras.js', './features.js', './firebase-config.js', './manifest.json', './icon.svg'];
 const MAX_MEDIA = 600;
 
 self.addEventListener('install', e => {

@@ -37,6 +37,7 @@
    <div class="stat"><div class="label">VOLUME DA SEMANA</div><div class="value" id="statVol">0</div><div class="sub">kg levantados</div></div>
    <div class="stat"><div class="label">PROTEÍNA HOJE</div><div class="value" id="statProtein">0 g</div><div class="sub" id="proteinSub"></div></div>
   </div>
+  <div class="stack" id="homeExtra"></div>
   <div class="card stack" id="lastCard"></div>
  </section>
 
@@ -46,6 +47,7 @@
   <div class="pills" id="workoutPills"></div>
   <div class="row"><h2 class="section-title" id="workoutHeading">Treino</h2><div style="display:flex;gap:8px"><button class="btn small secondary hidden" id="addExBtn" data-act="addExMenu">+ Exercício</button><button class="icon-btn hidden" id="dayMenuBtn" style="width:36px;height:36px" data-act="dayMenu" aria-label="Opções do dia">⋯</button></div></div>
   <div class="wp" id="wp"><div class="row"><span id="wpText">0/0 séries</span><span id="wpTime" class="muted"></span></div><div class="progress"><div id="wpBar"></div></div></div>
+  <div class="footer-actions hidden" id="wTools"><button class="btn small secondary" data-act="tplOpen" data-k="workout">Modelos</button><button class="btn small secondary" data-act="pasteOpen">Colar treino</button></div>
   <div class="stack" id="exerciseList"></div>
   <div class="stack" id="wFooter">
    <div class="field"><label>ANOTAÇÕES DO TREINO</label><textarea id="sessNote" class="wide-input" placeholder="Como foi o treino? Energia, dores, ajustes de carga…"></textarea></div>
@@ -57,6 +59,8 @@
  <!-- BIBLIOTECA -->
  <section id="page-library" class="page hidden">
   <div><div class="eyebrow">Demonstrações</div><h2 class="page-title">Biblioteca</h2><p class="muted" style="font-size:13px">Busque em português ou inglês: “supino”, “rosca”, “agachamento”…</p></div>
+  <div class="seg hidden" id="libSeg"><button class="on" data-act="libMode" data-m="db" data-m2="">Biblioteca</button><button data-act="libMode" data-m="mine">Meus exercícios</button></div>
+  <div id="libDb" class="stack">
   <div class="search">
    <input id="libQ" class="wide-input" type="search" placeholder="Buscar exercício…" autocomplete="off">
    <div class="chips" id="libChips"></div>
@@ -67,6 +71,8 @@
   <div class="libgrid" id="libGrid"></div>
   <button class="btn secondary block hidden" id="libMore" data-act="libMore">Mostrar mais</button>
   <p class="notice">Banco de exercícios: Free Exercise DB (domínio público).</p>
+  </div>
+  <div id="myLib" class="stack hidden"></div>
  </section>
 
  <!-- EVOLUÇÃO -->
@@ -96,6 +102,7 @@
  </section>
 
  <!-- PROFESSOR / ADMIN -->
+ <section id="page-cardio" class="page hidden"><div id="cardioBody" class="stack"></div><input type="file" id="trackFile" accept=".gpx,.tcx,.xml,application/gpx+xml" class="hidden"></section>
  <section id="page-students" class="page hidden"><div id="studentsBody" class="stack"></div></section>
  <section id="page-professors" class="page hidden"><div id="professorsBody" class="stack"></div></section>
  <section id="page-sdetail" class="page hidden"><div id="sdetailBody" class="stack"></div></section>

@@ -3,6 +3,8 @@ import { initializeApp, deleteApp } from 'https://www.gstatic.com/firebasejs/10.
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail, updatePassword, reauthenticateWithCredential, EmailAuthProvider } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, orderBy, limit, onSnapshot, writeBatch, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { $, esc, num, fmt, pad, keyOf, todayKey, parseKey, mondayOf, normalize, ago, uid, mmss, clean, initial, ic, lineChart, dayLabel, mus, eqp, LV, CAT, FORCE, MUSCLE_CHIPS, X, loadDB, retryDB, searchDB, scoreEx, rank, toGroups, exName, exInstr, hasPT, exFor, demoHTML } from './util.js';
+import * as E from './extras.js';
+import * as F from './features.js';
 
 window.__ares = 1;
 // lê as chaves sem quebrar o app se o arquivo estiver faltando ou mal colado
@@ -18,10 +20,12 @@ if (CONFIGURED) {
 
 /* ============ estado global ============ */
 let me = null, subj = null, page = '', sel = null, usersCache = [], unsubs = [], adminExists = null, registering = false, authMsg = '';
+let inviteCode = new URLSearchParams(location.search).get('convite') || '', invite = null, soloOn = false;
 const FAKE = '@aresgym.app';
 const S = () => subj.state;
 const WD = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-const ROLE = { aluno: 'Aluno', professor: 'Professor', admin: 'Administrador' };
+const ROLE = { aluno: 'Aluno', solo: 'Treino próprio', professor: 'Professor', admin: 'Administrador' };
+const selfRole = r => r === 'aluno' || r === 'solo';
 const TEMPLATE = {
   'Terça · Peito/ombro/tríceps': [['Supino deitado na máquina', '3', '8–12'], ['Supino inclinado com halteres', '3', '8–12'], ['Peck deck / crucifixo', '3', '10–15'], ['Elevação lateral', '3', '12–15'], ['Tríceps francês na polia', '2', '10–12'], ['Tríceps corda', '2', '10–15']],
   'Quarta · Pernas moderado': [['Cadeira extensora', '2', '12–15'], ['Leg press 45°', '2', '10–12'], ['Mesa flexora', '3', '10–15'], ['Cadeira abdutora', '2', '12–15'], ['Panturrilha em pé na máquina', '3', '12–15']],
@@ -46,7 +50,7 @@ function showScreen(n) { $('splash').classList.toggle('hidden', n !== 'splash');
 function splash(m) { $('splashMsg').textContent = m || ''; showScreen('splash') }
 function toast(msg) { const o = document.querySelector('.toast'); if (o) o.remove(); const el = document.createElement('div'); el.className = 'toast'; el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 2600) }
 function openSheet(html) { $('sheetBody').innerHTML = '<div class="sheet-handle"></div>' + html; $('sheet').classList.remove('hidden'); document.body.style.overflow = 'hidden'; $('sheetBody').scrollTop = 0 }
-function closeSheet() { $('sheet').classList.add('hidden'); $('sheetBody').innerHTML = ''; document.body.style.overflow = '' }
+function closeSheet() { F.onSheetClose(); $('sheet').classList.add('hidden'); $('sheetBody').innerHTML = ''; document.body.style.overflow = ''; if (me) { if (subj && page === 'home') renderHome(); else if (!subj && page === 'students') paintStudents() } }
 function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem('aresTheme', t) } catch { } const m = document.querySelector('meta[name=theme-color]'); if (m) m.content = t === 'light' ? '#f5f5f3' : '#0b0b0c' }
 
 /* ============ login ============ */
@@ -59,10 +63,14 @@ function renderAuth(mode = 'login', msg = '', ok = '') {
     <form class="stack" data-form="login"><div class="field"><label>E-MAIL OU USUÁRIO</label><input id="aLogin" class="wide-input" autocomplete="username" autocapitalize="none" autocorrect="off" required></div>
     <div class="field"><label>SENHA</label><input id="aPass" class="wide-input" type="password" autocomplete="current-password" required></div>
     <div class="auth-err" id="aErr">${esc(msg)}</div>${ok ? `<div class="auth-ok">${esc(ok)}</div>` : ''}<button class="btn block" id="aBtn">Entrar</button></form>
-    <button class="linkbtn" data-act="authMode" data-m="forgot">Esqueci minha senha</button>${adminExists === false ? '<button class="linkbtn" data-act="authMode" data-m="setup">Primeiro acesso? Criar administrador</button>' : ''}`;
+    <button class="linkbtn" data-act="authMode" data-m="forgot">Esqueci minha senha</button>${adminExists === false ? '<button class="linkbtn" data-act="authMode" data-m="setup">Primeiro acesso? Criar administrador</button>' : ''}${soloOn ? '<button class="linkbtn" data-act="authMode" data-m="solo">Vai treinar por conta própria? Criar conta</button>' : ''}`;
   } else if (mode === 'forgot') {
     h += `<div><h1>Recuperar senha</h1></div><p class="sub">Enviaremos um link para o seu e-mail.</p><form class="stack" data-form="forgot"><div class="field"><label>E-MAIL</label><input id="aLogin" class="wide-input" type="email" autocomplete="email" required></div><div class="auth-err" id="aErr"></div><button class="btn block" id="aBtn">Enviar link</button></form>
     <span class="hint">Contas criadas só com “usuário” (sem e-mail) não têm recuperação: peça ao seu professor ou administrador.</span><button class="linkbtn" data-act="authMode" data-m="login">Voltar</button>`;
+  } else if (mode === 'invite' || mode === 'solo') {
+    const inv = mode === 'invite';
+    h += `<div><h1>Criar conta</h1></div><p class="sub">${inv ? 'Você foi convidado por <b>' + esc(invite.professorName || 'seu professor') + '</b>. Crie seu login para acessar treinos, dieta e evolução.' : 'Monte e acompanhe seus próprios treinos, dieta e cardio.'}</p>
+    <form class="stack" data-form="${mode}"><div class="field"><label>NOME</label><input id="aName" class="wide-input" autocomplete="name" required></div><div class="field"><label>E-MAIL OU USUÁRIO</label><input id="aLogin" class="wide-input" autocomplete="username" autocapitalize="none" autocorrect="off" required><span class="hint">Com e-mail você consegue recuperar a senha depois.</span></div><div class="field"><label>SENHA (MÍNIMO 6)</label><input id="aPass" class="wide-input" type="password" autocomplete="new-password" minlength="6" required></div><div class="auth-err" id="aErr">${esc(msg)}</div><button class="btn block" id="aBtn">Criar conta</button></form><button class="linkbtn" data-act="authMode" data-m="login">Já tenho conta · entrar</button>`;
   } else if (mode === 'setup') {
     h += `<div><h1>Criar administrador</h1></div><p class="sub">A primeira conta criada controla todo o sistema. Faça isso agora, antes de divulgar o site.</p>
     <form class="stack" data-form="setup"><div class="field"><label>NOME</label><input id="aName" class="wide-input" autocomplete="name" required></div><div class="field"><label>E-MAIL</label><input id="aLogin" class="wide-input" type="email" autocomplete="email" required></div><div class="field"><label>SENHA (MÍNIMO 6)</label><input id="aPass" class="wide-input" type="password" autocomplete="new-password" minlength="6" required></div><div class="auth-err" id="aErr"></div><button class="btn block" id="aBtn">Criar administrador</button></form><button class="linkbtn" data-act="authMode" data-m="login">Voltar</button>`;
@@ -86,6 +94,18 @@ const FORM = {
       await batch.commit(); adminExists = true; registering = false; await boot(cred.user);
     } catch (e) { registering = false; setAuthErr(errMsg(e)); b.disabled = false; if (auth.currentUser) { try { await signOut(auth) } catch { } } }
   },
+  signup: async role => {
+    const name = $('aName').value.trim(), login = $('aLogin').value.trim(), pw = $('aPass').value, b = $('aBtn');
+    if (!name) { setAuthErr('Digite seu nome.'); return } if (!validLogin(login)) { setAuthErr('Use um e-mail ou um usuário (letras, números, ponto; mínimo 3).'); return } if (pw.length < 6) { setAuthErr('A senha precisa ter pelo menos 6 caracteres.'); return }
+    b.disabled = true; setAuthErr(''); registering = true;
+    try {
+      const email = toEmail(login), cred = await createUserWithEmailAndPassword(auth, email, pw), now = Date.now();
+      await setDoc(doc(db, 'users', cred.user.uid), role === 'aluno' ? { name, email, role, active: true, professorId: invite.professorId, inviteCode, createdAt: now } : { name, email, role, active: true, professorId: null, createdAt: now });
+      registering = false; if (role === 'aluno') { inviteCode = ''; invite = null; try { history.replaceState(null, '', location.pathname) } catch { } }
+      await boot(cred.user);
+    } catch (e) { registering = false; b.disabled = false; if (auth.currentUser) { authMsg = errMsg(e); try { await signOut(auth) } catch { } } else setAuthErr(errMsg(e)) }
+  },
+  invite: () => FORM.signup('aluno'), solo: () => FORM.signup('solo'),
   createUser: async f => {
     const role = f.dataset.role, name = $('cuName').value.trim(), login = $('cuLogin').value.trim(), pw = $('cuPass').value, b = $('cuBtn'), err = $('cuErr');
     if (!name) { err.textContent = 'Digite o nome.'; return } if (!validLogin(login)) { err.textContent = 'Use um e-mail ou um usuário (letras, números, ponto; mínimo 3).'; return } if (pw.length < 6) { err.textContent = 'A senha precisa ter pelo menos 6 caracteres.'; return }
@@ -106,6 +126,13 @@ async function createAuthUser(email, pw) {
   try { const cred = await createUserWithEmailAndPassword(getAuth(a2), email, pw); const id = cred.user.uid; await signOut(getAuth(a2)); return id } finally { try { await deleteApp(a2) } catch { } }
 }
 async function checkAdminExists() { if (adminExists !== null) return; try { adminExists = (await getDoc(doc(db, 'meta', 'admin'))).exists() } catch { adminExists = true } }
+async function loadConfig() { try { const c = await getDoc(doc(db, 'meta', 'config')); soloOn = !!(c.exists() && c.data().soloSignup) } catch { } }
+async function loadInvite() {
+  if (!inviteCode || invite) return;
+  try { const c = await getDoc(doc(db, 'invites', inviteCode)), d = c.exists() ? c.data() : null; invite = d && d.active !== false && (d.expiresAt || 0) > Date.now() ? d : null; if (!invite) authMsg = 'Este convite expirou ou foi cancelado. Peça um novo link ao seu professor.' }
+  catch { invite = null; authMsg = 'Não foi possível verificar o convite.' }
+  if (!invite) inviteCode = '';
+}
 async function authFail(msg) { authMsg = msg; try { await signOut(auth) } catch { renderAuth('login', msg) } }
 
 /* ============ entrada no sistema ============ */
@@ -116,7 +143,9 @@ async function boot(user) {
   me = { uid: user.uid, ...snap.data() };
   if (me.active === false) return authFail('Sua conta está desativada. Fale com ' + (me.role === 'aluno' ? 'seu professor' : 'o administrador') + '.');
   try {
-    if (me.role === 'aluno') { await openSubject(me.uid, me, true); setSelDefault(); showScreen('shell'); go('home') }
+    if (me.role !== 'aluno') { try { await F.loadMine() } catch { } }
+    if (me.role === 'admin') await loadConfig();
+    if (selfRole(me.role)) { await openSubject(me.uid, me, true); setSelDefault(); showScreen('shell'); go('home'); if (me.role === 'aluno') saveSummary() }
     else { await loadUsers(); showScreen('shell'); go(me.role === 'admin' ? 'professors' : 'students') }
   } catch (e) { console.error(e); authFail('Erro ao carregar seus dados: ' + errMsg(e)); return }
   loadDB(() => { rerender(); if (page === 'library') renderLibResults(); paintLibStatus() });
@@ -137,7 +166,7 @@ function watch(ref, apply) {
 function stopSubject() { unsubs.forEach(u => { try { u() } catch { } }); unsubs = [] }
 async function openSubject(id, profile, self) {
   stopSubject(); stopAllTimers();
-  subj = { uid: id, profile, self, canEdit: !self, plan: { days: [] }, diet: { meals: [], goal: 0, guidance: '' }, state: freshState(), sessions: [] };
+  subj = { uid: id, profile, self, canEdit: !self || (me && me.role === 'solo'), acts: [], msgs: [], plan: { days: [] }, diet: { meals: [], goal: 0, guidance: '' }, state: freshState(), sessions: [] };
   const base = ['users', id, 'data'];
   await Promise.all([
     watch(doc(db, ...base, 'plan'), s => { const p = s.exists() ? s.data() : {}; subj.plan = { days: (p.days || []).map(d => ({ ...d, exercises: d.exercises || [] })) } }),
@@ -146,8 +175,10 @@ async function openSubject(id, profile, self) {
       if (self) { const s = await getDoc(doc(db, ...base, 'state')); if (s.exists()) subj.state = { ...freshState(), ...s.data(), settings: { ...freshState().settings, ...(s.data().settings || {}) } } }
       else { try { const s = await getDoc(doc(db, ...base, 'state')); if (s.exists()) subj.state = { ...freshState(), ...s.data() } } catch { } }
     })(),
-    (async () => { const s = await getDocs(query(collection(db, 'users', id, 'sessions'), orderBy('date', 'desc'), limit(400))); subj.sessions = s.docs.map(d => ({ id: d.id, ...d.data() })).reverse() })()
+    (async () => { const s = await getDocs(query(collection(db, 'users', id, 'sessions'), orderBy('date', 'desc'), limit(400))); subj.sessions = s.docs.map(d => ({ id: d.id, ...d.data() })).reverse() })(),
+    (async () => { try { const s = await getDocs(query(collection(db, 'users', id, 'activities'), orderBy('date', 'desc'), limit(200))); subj.acts = s.docs.map(d => ({ id: d.id, ...d.data() })) } catch { subj.acts = [] } })()
   ]);
+  if (self && me.role === 'aluno') { try { await F.loadMsgs() } catch { } }
   if (self && S().foodDate !== todayKey()) { S().foodDate = todayKey(); S().foods = [] }
   sel = null; setSelDefault();
 }
@@ -157,12 +188,12 @@ async function openStudent(id) {
   try { await openSubject(id, p, false); showScreen('shell'); go('workouts') } catch (e) { showScreen('shell'); toast(errMsg(e)); go(page || 'students') }
 }
 function closeStudent() { stopSubject(); subj = null; go(me.role === 'admin' ? 'students' : 'students') }
-function rerender() { if (!subj) return; if (page === 'workouts') renderWorkouts(); else if (page === 'diet') renderDiet(); else if (page === 'home') renderHome(); else if (page === 'sdetail') renderSDetail(); else if (page === 'progress') renderProgress() }
+function rerender() { if (!subj) { if (page === 'students' && me) renderStudents(); return } if (page === 'cardio') F.renderCardio(); else if (page === 'workouts') renderWorkouts(); else if (page === 'diet') renderDiet(); else if (page === 'home') renderHome(); else if (page === 'sdetail') renderSDetail(); else if (page === 'progress') renderProgress() }
 
 /* ============ navegação ============ */
 function navItems() {
-  if (subj && !subj.self) return [['workouts', 'dumbbell', 'Treinos'], ['diet', 'utensils', 'Dieta'], ['progress', 'trend', 'Evolução'], ['sdetail', 'user', 'Aluno']];
-  if (me.role === 'aluno') return [['home', 'home', 'Início'], ['workouts', 'dumbbell', 'Treinos'], ['diet', 'utensils', 'Dieta'], ['progress', 'trend', 'Evolução'], ['library', 'grid', 'Biblioteca']];
+  if (subj && !subj.self) return [['workouts', 'dumbbell', 'Treinos'], ['diet', 'utensils', 'Dieta'], ['cardio', 'timer', 'Cardio'], ['progress', 'trend', 'Evolução'], ['sdetail', 'user', 'Aluno']];
+  if (selfRole(me.role)) return [['home', 'home', 'Início'], ['workouts', 'dumbbell', 'Treinos'], ['cardio', 'timer', 'Cardio'], ['diet', 'utensils', 'Dieta'], ['progress', 'trend', 'Evolução'], ['library', 'grid', 'Biblioteca']];
   if (me.role === 'professor') return [['students', 'users', 'Alunos'], ['library', 'grid', 'Biblioteca'], ['account', 'user', 'Conta']];
   return [['professors', 'shield', 'Professores'], ['students', 'users', 'Alunos'], ['library', 'grid', 'Biblioteca'], ['account', 'user', 'Conta']];
 }
@@ -170,20 +201,20 @@ function renderNav() { $('navInner').innerHTML = navItems().map(([p, i, l]) => `
 function renderHeader() {
   const h = $('hdr');
   if (subj && !subj.self) { h.innerHTML = `<button class="back" data-act="closeStudent">${ic('back', 18)}Voltar</button><div class="hdr-mid"><small>Aluno</small><strong>${esc(subj.profile.name)}</strong></div><span style="width:40px"></span>`; return }
-  h.innerHTML = `<div class="brand"><div class="logo">A</div><div><h1>ARES GYM</h1><p>${ROLE[me.role]}</p></div></div><div class="head-right">${me.role === 'aluno' ? `<button class="icon-btn" data-act="openTimer" aria-label="Cronômetro de descanso">${ic('timer', 19)}</button>` : ''}<button class="avatar" data-act="go" data-p="account" aria-label="Minha conta">${esc(initial(me.name))}</button></div>`;
+  h.innerHTML = `<div class="brand"><div class="logo">A</div><div><h1>ARES GYM</h1><p>${ROLE[me.role]}</p></div></div><div class="head-right">${selfRole(me.role) ? `<button class="icon-btn" data-act="openTimer" aria-label="Cronômetro de descanso">${ic('timer', 19)}</button>` : ''}<button class="avatar" data-act="go" data-p="account" aria-label="Minha conta">${esc(initial(me.name))}</button></div>`;
 }
-const RENDER = { home: () => renderHome(), workouts: () => renderWorkouts(), diet: () => renderDiet(), progress: () => renderProgress(), library: () => enterLibrary(), students: () => renderStudents(), professors: () => renderProfessors(), sdetail: () => renderSDetail(), account: () => renderAccount() };
+const RENDER = { home: () => renderHome(), workouts: () => renderWorkouts(), diet: () => renderDiet(), progress: () => renderProgress(), library: () => enterLibrary(), cardio: () => F.renderCardio(), students: () => openStudentsPage(), professors: () => renderProfessors(), sdetail: () => renderSDetail(), account: () => renderAccount() };
 function go(p) {
   page = p; document.querySelectorAll('.page').forEach(e => e.classList.add('hidden')); $('page-' + p).classList.remove('hidden');
   renderNav(); renderHeader(); (RENDER[p] || (() => { }))(); window.scrollTo({ top: 0 });
 }
 
 /* ============ estatísticas ============ */
-function sessionDays() { const m = {}; subj.sessions.forEach(s => { m[s.day] = (m[s.day] || 0) + 1 }); return m }
+function sessionDays() { const m = {}; subj.sessions.forEach(s => { m[s.day] = (m[s.day] || 0) + 1 }); (subj.acts || []).forEach(a => { if (a.day) m[a.day] = (m[a.day] || 0) + 1 }); return m }
 function weekStats() { const mon = keyOf(mondayOf(new Date())); let n = 0, vol = 0; subj.sessions.forEach(s => { if (s.day >= mon) { n++; vol += s.volume || 0 } }); return { n, vol } }
 function weekStreak() { const w = new Set(subj.sessions.map(s => keyOf(mondayOf(parseKey(s.day))))); let c = mondayOf(new Date()), n = 0; if (!w.has(keyOf(c))) c.setDate(c.getDate() - 7); while (w.has(keyOf(c))) { n++; c.setDate(c.getDate() - 7) } return n }
 function lastPerf(name) { const k = normalize(name); for (let i = subj.sessions.length - 1; i >= 0; i--) { const en = subj.sessions[i].entries.find(e => normalize(e.exercise) === k && (num(e.load) > 0 || (e.setsData && e.setsData.length))); if (en) return { en, date: subj.sessions[i].date } } return null }
-function lastSet(name, s) { const p = lastPerf(name); if (!p) return null; const sd = p.en.setsData; if (sd && sd.length) { const r = sd[Math.min(s, sd.length - 1)]; return { kg: String(r.kg ?? ''), reps: String(r.reps ?? '') } } return { kg: String(p.en.load || ''), reps: String(p.en.reps || '') } }
+function lastSet(name, s) { const p = lastPerf(name); if (!p || (p.en.type && p.en.type !== 'reps')) return null; const sd = p.en.setsData; if (sd && sd.length) { const r = sd[Math.min(s, sd.length - 1)]; return { kg: String(r.kg ?? ''), reps: String(r.reps ?? '') } } return { kg: String(p.en.load || ''), reps: String(p.en.reps || '') } }
 function maxLoadBefore(name) { const k = normalize(name); let m = 0; subj.sessions.forEach(s => s.entries.forEach(e => { if (normalize(e.exercise) === k) { const l = e.setsData && e.setsData.length ? Math.max(0, ...e.setsData.map(x => num(x.kg))) : num(e.load); if (l > m) m = l } })); return m }
 const est1RM = (kg, r) => r <= 1 ? kg : kg * (1 + r / 30);
 function suggestedDay() { const t = WD[new Date().getDay()]; return subj && subj.plan.days.find(d => normalize(d.name).startsWith(t)) || null }
@@ -194,6 +225,12 @@ function foodTotal() { if (S().foodDate !== todayKey()) { S().foodDate = todayKe
 let saveT = null;
 function saveState() { if (!subj || !subj.self) return; clearTimeout(saveT); saveT = setTimeout(saveStateNow, 1200) }
 function saveStateNow() { clearTimeout(saveT); if (!subj || !subj.self) return; const st = S(), keys = Object.keys(st.mealsDone || {}).sort(); keys.slice(0, Math.max(0, keys.length - 14)).forEach(k => delete st.mealsDone[k]); setDoc(doc(db, 'users', subj.uid, 'data', 'state'), clean(st)).catch(e => { console.warn(e); toast('Não foi possível salvar na nuvem agora.') }) }
+function saveSummary() {
+  if (!subj || !subj.self || !db) return; const ss = subj.sessions, acts = subj.acts || [];
+  const days = [...new Set([...ss.map(x => x.day), ...acts.map(a => a.day)].filter(Boolean))].sort().slice(-28);
+  const pcts = ss.slice(-6).filter(x => x.plan > 0).map(x => ({ p: Math.min(100, Math.round(100 * (x.sets || 0) / x.plan)) }));
+  setDoc(doc(db, 'users', subj.uid, 'data', 'summary'), clean({ lastDay: days[days.length - 1] || '', days, planned: Math.min(7, subj.plan.days.length), pcts, msgAt: S().lastMsgAt || 0, updatedAt: Date.now() })).catch(() => { });
+}
 const savePlan = () => setDoc(doc(db, 'users', subj.uid, 'data', 'plan'), clean(subj.plan)).catch(e => toast(errMsg(e)));
 const saveDiet = () => setDoc(doc(db, 'users', subj.uid, 'data', 'diet'), clean(subj.diet)).catch(e => toast(errMsg(e)));
 
@@ -203,12 +240,14 @@ function renderHome() {
   const days = subj.plan.days, tk = todayKey(), h = new Date().getHours(), g = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite', sug = suggestedDay(), first = String(me.name).split(' ')[0];
   $('heroEyebrow').textContent = g + ', ' + first;
   const btn = $('heroBtn'); btn.classList.remove('hidden');
-  if (!days.length) { $('heroTitle').textContent = 'Aguardando seu treino.'; $('heroText').textContent = 'Seu professor ainda vai montar a sua ficha. Assim que ele publicar, ela aparece aqui.'; btn.classList.add('hidden') }
+  if (!days.length) { if (me.role === 'solo') { $('heroTitle').textContent = 'Monte o seu treino.'; $('heroText').textContent = 'Crie os dias e exercícios, ou cole um treino que você já tem (WhatsApp, PDF, anotação).'; btn.textContent = 'Montar meu treino' } else { $('heroTitle').textContent = 'Aguardando seu treino.'; $('heroText').textContent = 'Seu professor ainda vai montar a sua ficha. Assim que ele publicar, ela aparece aqui.'; btn.classList.add('hidden') } }
   else if (!sug) { $('heroTitle').textContent = 'Hoje é dia livre.'; $('heroText').textContent = 'Descanse ou escolha uma ficha para treinar mesmo assim.'; btn.textContent = 'Abrir meus treinos' }
   else if (subj.sessions.some(s => s.day === tk && s.name === sug.name)) { $('heroTitle').textContent = 'Treino de hoje concluído.'; $('heroText').textContent = 'Boa! Agora é recuperar: proteína, água e sono.'; btn.textContent = 'Ver treinos' }
   else { const prog = S().drafts[sug.id] && S().drafts[sug.id].startedAt; $('heroTitle').textContent = sug.name.split(' · ')[1] || sug.name; $('heroText').textContent = sug.exercises.length + ' exercícios planejados para hoje.' + (prog ? ' Você já começou — continue de onde parou.' : ''); btn.textContent = prog ? 'Continuar treino' : 'Iniciar treino' }
   const lg = readLegacy();
   $('legacyBox').innerHTML = lg ? `<div class="card stack banner"><p><b>Encontramos dados antigos neste aparelho</b> (${(lg.sessions || []).length} treinos). Quer trazer o histórico para a sua conta?</p><div class="footer-actions"><button class="btn small" data-act="importLegacy">Importar histórico</button><button class="btn small ghost" data-act="skipLegacy">Agora não</button></div></div>` : '';
+  const un = F.unreadForStudent();
+  $('homeExtra').innerHTML = me.role === 'aluno' && me.professorId ? `<button class="urow" data-act="chatOpen"><div class="avatar">R</div><div class="uinfo"><strong>Recados do professor</strong><small>${un ? un + ' mensagem' + (un > 1 ? 's novas' : ' nova') : 'Toque para conversar'}</small></div>${un ? `<span class="badge">${un}</span>` : ic('chevron', 18)}</button>` : '';
   const mon = mondayOf(new Date()), days_ = sessionDays(), L = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
   $('weekStrip').innerHTML = L.map((l, i) => { const d = new Date(mon); d.setDate(d.getDate() + i); const k = keyOf(d); return `<div class="wd ${days_[k] ? 'on' : ''} ${k === tk ? 'today' : ''}">${l}<i></i></div>` }).join('');
   const ws = weekStats(); $('weekCount').textContent = ws.n + ' treino' + (ws.n === 1 ? '' : 's');
@@ -222,32 +261,43 @@ function renderHome() {
 const curDay = () => subj.plan.days.find(d => d.id === sel) || null;
 const findEx = eid => { const d = curDay(); return d && d.exercises.find(e => e.id === eid) };
 const draftOf = () => S().drafts[sel] || (S().drafts[sel] = { startedAt: null, note: '', sets: {}, n: {}, notes: {} });
-function nSets(e) { const d = S().drafts[sel]; return d && d.n && d.n[e.id] != null ? d.n[e.id] : (parseInt(e.sets) || 3) }
-function setRow(eid, s) { const d = draftOf(), a = d.sets[eid] || (d.sets[eid] = []); while (a.length <= s) a.push({ kg: '', reps: '', done: false }); return a[s] }
-const thumbHTML = ex => { const e = exFor(ex); return e ? demoHTML(e, 'sm') : '<span>Ver<br>demo</span>' };
+function nSets(e) { const t = E.typeOf(e); if (t === 'cardio' || t === 'interval') return 1; const d = S().drafts[sel]; return d && d.n && d.n[e.id] != null ? d.n[e.id] : (parseInt(e.sets) || 3) }
+function setRow(eid, s) { const d = draftOf(), a = d.sets[eid] || (d.sets[eid] = []); while (a.length <= s) a.push(E.blankRow()); return a[s] }
+const thumbHTML = ex => { if (ex.video) { const t = E.videoThumb(ex.video); return t ? `<img src="${esc(t)}" alt="" loading="lazy">` : '<span>▶<br>Vídeo</span>' } const e = exFor(ex); return e ? demoHTML(e, 'sm') : '<span>Ver<br>demo</span>' };
+const COLS = { reps: [['kg', 'CARGA (KG)', 'decimal'], ['reps', 'REPS', 'numeric']], time: [['secs', 'TEMPO (S)', 'numeric'], ['kg', 'CARGA (KG)', 'decimal']], cardio: [['min', 'MIN', 'decimal'], ['km', 'KM', 'decimal']], interval: [['rounds', 'RODADAS', 'numeric']] };
+function ph(e, f, s) {
+  const t = E.typeOf(e); if (t === 'reps') { const ls = lastSet(e.name, s); return (ls && ls[f]) || '0' }
+  if (t === 'time') return f === 'secs' ? (e.secs || '0') : '0'; if (t === 'cardio') return (f === 'min' ? e.min : e.km) || '0'; return e.rounds || '0';
+}
+function lastLine(e, self) {
+  const lp = lastPerf(e.name); if (!lp) return ''; const t = lp.en.type || 'reps', w = self ? 'Última vez' : 'Última carga do aluno';
+  if (t === 'reps') return `${w}: ${lp.en.setsData && lp.en.setsData.length ? lp.en.setsData.map(x => fmt(num(x.kg)) + '×' + x.reps).join(' · ') : fmt(num(lp.en.load)) + ' kg × ' + (lp.en.reps || '—')} (${ago(lp.date)})`;
+  return lp.en.setsData && lp.en.setsData.length ? `${self ? 'Última vez' : 'Último registro'}: ${lp.en.setsData.map(x => E.fmtRow(t, x)).join(' · ')} (${ago(lp.date)})` : '';
+}
 function renderWorkouts() {
   const self = subj.self, edit = subj.canEdit, days = subj.plan.days; setSelDefault(); const day = curDay();
   $('wTitle').textContent = self ? 'Meus treinos' : 'Treinos do aluno'; $('wEyebrow').textContent = self ? 'Planejamento' : 'Ficha do aluno';
-  $('wSub').textContent = self ? 'Marque cada série ao terminar — o descanso começa sozinho.' : 'Monte a ficha. O aluno vê as alterações na hora.';
+  $('wSub').textContent = self ? (edit ? 'Monte a sua ficha e marque cada série ao terminar — o descanso começa sozinho.' : 'Marque cada série ao terminar — o descanso começa sozinho.') : 'Monte a ficha. O aluno vê as alterações na hora.';
   $('workoutPills').innerHTML = days.map(d => `<button class="pill ${d.id === sel ? 'active' : ''}" data-act="selDay" data-id="${d.id}">${esc(d.name)}</button>`).join('') + (edit ? `<button class="pill" data-act="newDay">＋ Novo dia</button>` : '');
-  $('workoutHeading').textContent = day ? day.name : 'Treino';
+  $('workoutHeading').textContent = day ? day.name : 'Treino'; $('wTools').classList.toggle('hidden', !edit);
   $('addExBtn').classList.toggle('hidden', !edit || !day); $('dayMenuBtn').classList.toggle('hidden', !edit || !day);
   $('wp').classList.toggle('hidden', !self || !day); $('wFooter').classList.toggle('hidden', !self || !day);
-  if (!day) { $('exerciseList').innerHTML = `<div class="empty">${self ? 'Seu professor ainda não montou o seu treino.' : 'Nenhum dia de treino ainda. Toque em “＋ Novo dia” para começar.'}</div>`; return }
+  if (!day) { $('exerciseList').innerHTML = `<div class="empty">${edit ? 'Nenhum dia de treino ainda. Toque em “＋ Novo dia”, use um modelo ou cole um treino pronto.' : 'Seu professor ainda não montou o seu treino.'}</div>`; return }
   const d = S().drafts[sel] || { sets: {}, notes: {} };
   $('sessNote').value = d.note || '';
   $('exerciseList').innerHTML = day.exercises.map((e, i) => {
-    const lp = lastPerf(e.name), lastTxt = lp ? `${self ? 'Última vez' : 'Última carga do aluno'}: ${lp.en.setsData && lp.en.setsData.length ? lp.en.setsData.map(x => fmt(num(x.kg)) + '×' + x.reps).join(' · ') : fmt(num(lp.en.load)) + ' kg × ' + (lp.en.reps || '—')} (${ago(lp.date)})` : '';
-    const head = `<div class="ex-head"><button class="thumb" data-act="demo" data-eid="${e.id}" aria-label="Ver demonstração">${thumbHTML(e)}</button><div class="ex-info"><h3>${i + 1}. ${esc(e.name)}</h3><p>${esc(e.sets)} séries · ${esc(e.reps)} reps</p>${e.note ? `<p class="obs">${esc(e.note)}</p>` : ''}${lastTxt ? `<p class="last">${esc(lastTxt)}</p>` : ''}</div>${edit ? `<button class="icon-btn" data-act="exMenu" data-eid="${e.id}" aria-label="Opções">${ic('more', 18)}</button>` : ''}</div>`;
-    if (!self) return `<div class="exercise">${head}${((d.notes && d.notes[e.id]) ? '' : '')}</div>`;
-    const rows = nSets(e), arr = d.sets[e.id] || []; let all = rows > 0, rh = '';
+    const t = E.typeOf(e), lastTxt = lastLine(e, self);
+    const head = `<div class="ex-head"><button class="thumb" data-act="demo" data-eid="${e.id}" aria-label="Ver demonstração">${thumbHTML(e)}</button><div class="ex-info"><h3>${e.group ? `<span class="gtag">${esc(e.group)}</span>` : ''}${i + 1}. ${esc(e.name)}</h3><p>${esc(E.exSummary(e))}</p>${e.note ? `<p class="obs">${esc(e.note)}</p>` : ''}${lastTxt ? `<p class="last">${esc(lastTxt)}</p>` : ''}</div>${edit ? `<button class="icon-btn" data-act="exMenu" data-eid="${e.id}" aria-label="Opções">${ic('more', 18)}</button>` : ''}</div>`;
+    if (!self) return `<div class="exercise">${head}</div>`;
+    const rows = nSets(e), arr = d.sets[e.id] || [], cols = COLS[t] || COLS.reps; let all = rows > 0, rh = '';
     for (let s = 0; s < rows; s++) {
-      const r = arr[s] || {}, ls = lastSet(e.name, s); if (!r.done) all = false;
-      rh += `<div class="setrow ${r.done ? 'on' : ''}"><span class="sn">${s + 1}</span><input class="setin" inputmode="decimal" data-eid="${e.id}" data-s="${s}" data-f="kg" value="${esc(r.kg || '')}" placeholder="${esc(ls ? ls.kg || '0' : '0')}" aria-label="Carga série ${s + 1}"><input class="setin" inputmode="numeric" data-eid="${e.id}" data-s="${s}" data-f="reps" value="${esc(r.reps || '')}" placeholder="${esc(ls ? ls.reps || '0' : '0')}" aria-label="Repetições série ${s + 1}"><label class="chk"><input type="checkbox" class="setchk" data-eid="${e.id}" data-s="${s}" ${r.done ? 'checked' : ''} aria-label="Série ${s + 1} concluída"><span></span></label></div>`;
+      const r = arr[s] || {}; if (!r.done) all = false;
+      rh += `<div class="setrow c${cols.length} ${r.done ? 'on' : ''}"><span class="sn">${s + 1}</span>${cols.map(([f, l, m]) => `<input class="setin" inputmode="${m}" data-eid="${e.id}" data-s="${s}" data-f="${f}" value="${esc(r[f] || '')}" placeholder="${esc(ph(e, f, s))}" aria-label="${l} série ${s + 1}">`).join('')}<label class="chk"><input type="checkbox" class="setchk" data-eid="${e.id}" data-s="${s}" ${r.done ? 'checked' : ''} aria-label="Série ${s + 1} concluída"><span></span></label></div>`;
     }
-    const nv = (d.notes && d.notes[e.id]) || '';
-    return `<div class="exercise ${all ? 'done' : ''}" data-eid="${e.id}">${head}<div class="sets"><div class="sethead"><span>#</span><span>CARGA (KG)</span><span>REPS</span><span>OK</span></div>${rh}<div class="set-actions"><button class="btn small ghost" data-act="addSet" data-eid="${e.id}">+ série</button>${rows > 1 ? `<button class="btn small ghost" data-act="rmSet" data-eid="${e.id}">− série</button>` : ''}</div></div><details class="note" ${nv ? 'open' : ''}><summary>Anotação deste exercício${nv ? ' ·' : ''}</summary><textarea class="wide-input" data-exnote="${e.id}" placeholder="Ex.: sentei o banco no 4, senti o ombro…">${esc(nv)}</textarea></details></div>`;
-  }).join('') || `<div class="empty">${self ? 'Esta ficha ainda não tem exercícios.' : 'Nenhum exercício nesta ficha. Toque em “+ Exercício”.'}</div>`;
+    const nv = (d.notes && d.notes[e.id]) || '', multi = t === 'reps' || t === 'time';
+    const tools = (t === 'interval' ? `<button class="btn small" data-act="ivStart" data-eid="${e.id}">Iniciar intervalos</button>` : '') + (t === 'time' && num(e.secs) ? `<button class="btn small secondary" data-act="timeStart" data-s="${esc(e.secs)}">Cronômetro ${esc(e.secs)}s</button>` : '') + (multi ? `<button class="btn small ghost" data-act="addSet" data-eid="${e.id}">+ série</button>${rows > 1 ? `<button class="btn small ghost" data-act="rmSet" data-eid="${e.id}">− série</button>` : ''}` : '');
+    return `<div class="exercise ${all ? 'done' : ''}" data-eid="${e.id}">${head}<div class="sets"><div class="sethead c${cols.length}"><span>#</span>${cols.map(c => `<span>${c[1]}</span>`).join('')}<span>OK</span></div>${rh}${tools ? `<div class="set-actions">${tools}</div>` : ''}</div><details class="note" ${nv ? 'open' : ''}><summary>Anotação deste exercício${nv ? ' ·' : ''}</summary><textarea class="wide-input" data-exnote="${e.id}" placeholder="Ex.: sentei o banco no 4, senti o ombro…">${esc(nv)}</textarea></details></div>`;
+  }).join('') || `<div class="empty">${edit ? 'Nenhum exercício nesta ficha. Toque em “+ Exercício”.' : 'Esta ficha ainda não tem exercícios.'}</div>`;
   updateWP();
 }
 function updateWP() {
@@ -260,40 +310,41 @@ function updateWP() {
 setInterval(updateWP, 1000);
 function touch() { const d = draftOf(); if (!d.startedAt) d.startedAt = Date.now(); wake() }
 function finishWorkout() {
-  const day = curDay(); if (!day) return; const d = S().drafts[sel]; const entries = []; let vol = 0, total = 0; const prs = [];
+  const day = curDay(); if (!day) return; const d = S().drafts[sel]; const entries = []; let vol = 0, total = 0, planned = 0; const prs = [];
   day.exercises.forEach(e => {
-    const rows = ((d && d.sets[e.id]) || []).filter(r => r.done || r.kg !== '' || r.reps !== ''), sd = rows.map(r => ({ kg: num(r.kg), reps: num(r.reps) }));
-    let best = { kg: 0, reps: 0 }; sd.forEach(x => { if (x.kg > best.kg || (x.kg === best.kg && x.reps > best.reps)) best = x }); sd.forEach(x => { vol += x.kg * x.reps }); total += sd.length;
+    const t = E.typeOf(e); planned += nSets(e);
+    const rows = ((d && d.sets[e.id]) || []).filter(r => r.done || E.rowHasData(r)), sd = rows.map(r => ({ kg: num(r.kg), reps: num(r.reps), secs: num(r.secs), km: num(r.km), min: num(r.min), rounds: num(r.rounds) }));
+    let best = { kg: 0, reps: 0 }; if (t === 'reps') { sd.forEach(x => { if (x.kg > best.kg || (x.kg === best.kg && x.reps > best.reps)) best = x }); sd.forEach(x => { vol += x.kg * x.reps }) } total += sd.length;
     if (best.kg > 0) { const prev = maxLoadBefore(e.name); if (prev > 0 && best.kg > prev) prs.push({ exercise: e.name, load: best.kg, prev }) }
-    entries.push({ eid: e.id, exercise: e.name, load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets), done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || '' });
+    entries.push({ eid: e.id, exercise: e.name, type: t, load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets || ''), done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || '' });
   });
-  if (!total) { alert('Marque ao menos uma série (ou preencha carga/repetições) antes de concluir.'); return }
+  if (!total) { alert('Marque ao menos uma série (ou preencha os campos) antes de concluir.'); return }
   const dur = d && d.startedAt ? Math.round((Date.now() - d.startedAt) / 1000) : 0;
-  const sess = { date: new Date().toISOString(), day: todayKey(), name: day.name, duration: dur, volume: Math.round(vol), prs, entries, note: (d && d.note) || '' };
+  const sess = { date: new Date().toISOString(), day: todayKey(), name: day.name, duration: dur, volume: Math.round(vol), sets: total, plan: planned, prs, entries, note: (d && d.note) || '' };
   const ref = doc(collection(db, 'users', subj.uid, 'sessions')); setDoc(ref, clean(sess)).catch(e => toast('Não foi possível salvar na nuvem agora.'));
-  subj.sessions.push({ ...sess, id: ref.id }); delete S().drafts[sel]; saveStateNow(); releaseWake(); dismissTimer(); renderWorkouts();
-  openSheet(`<h2>Treino concluído</h2><div class="sum"><div><b>${dur ? Math.max(1, Math.round(dur / 60)) : '—'}</b><small>MINUTOS</small></div><div><b>${total}</b><small>SÉRIES</small></div><div><b>${fmt(vol, 0)}</b><small>KG DE VOLUME</small></div></div>${prs.length ? prs.map(p => `<div class="pr">Novo recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg <span class="muted">(antes ${fmt(p.prev)} kg)</span></div>`).join('') : '<p class="muted" style="font-size:13px">Treino salvo no histórico. Seu professor consegue ver suas anotações.</p>'}<button class="btn block" data-act="closeSheet">Fechar</button>`);
+  subj.sessions.push({ ...sess, id: ref.id }); delete S().drafts[sel]; saveStateNow(); saveSummary(); releaseWake(); dismissTimer(); renderWorkouts();
+  openSheet(`<h2>Treino concluído</h2><div class="sum"><div><b>${dur ? Math.max(1, Math.round(dur / 60)) : '—'}</b><small>MINUTOS</small></div><div><b>${total}</b><small>SÉRIES</small></div><div><b>${fmt(vol, 0)}</b><small>KG DE VOLUME</small></div></div>${prs.length ? prs.map(p => `<div class="pr">Novo recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg <span class="muted">(antes ${fmt(p.prev)} kg)</span></div>`).join('') : `<p class="muted" style="font-size:13px">Treino salvo no histórico.${me.role === 'aluno' ? ' Seu professor consegue ver suas anotações.' : ''}</p>`}<button class="btn block" data-act="closeSheet">Fechar</button>`);
 }
 function viewSession(id) {
   const s = subj.sessions.find(x => x.id === id); if (!s) return;
-  openSheet(`<h2>${esc(s.name)}</h2><p class="muted" style="font-size:12px">${new Date(s.date).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${s.duration ? ' · ' + Math.round(s.duration / 60) + ' min' : ''} · ${fmt(s.volume || 0, 0)} kg de volume</p>${(s.prs || []).map(p => `<div class="pr">Recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg</div>`).join('')}${s.note ? `<div class="card"><div class="eyebrow">ANOTAÇÃO DO TREINO</div><p style="font-size:13.5px;line-height:1.6;margin-top:8px;white-space:pre-wrap">${esc(s.note)}</p></div>` : ''}<div class="stack">${s.entries.map(e => `<div class="meal-row"><div><strong>${e.done ? '✓' : '•'} ${esc(e.exercise)}</strong><small>${e.setsData && e.setsData.length ? e.setsData.map(x => fmt(x.kg) + ' kg × ' + x.reps).join(' · ') : (fmt(num(e.load)) + ' kg × ' + (e.reps || '—') + ' (' + e.sets + ' séries)')}${e.note ? '<br>“' + esc(e.note) + '”' : ''}</small></div></div>`).join('')}</div>${subj.self ? `<button class="btn danger block" data-act="delSession" data-id="${esc(s.id)}">Excluir este treino</button>` : ''}<button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
+  openSheet(`<h2>${esc(s.name)}</h2><p class="muted" style="font-size:12px">${new Date(s.date).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${s.duration ? ' · ' + Math.round(s.duration / 60) + ' min' : ''} · ${fmt(s.volume || 0, 0)} kg de volume</p>${(s.prs || []).map(p => `<div class="pr">Recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg</div>`).join('')}${s.note ? `<div class="card"><div class="eyebrow">ANOTAÇÃO DO TREINO</div><p style="font-size:13.5px;line-height:1.6;margin-top:8px;white-space:pre-wrap">${esc(s.note)}</p></div>` : ''}<div class="stack">${s.entries.map(e => `<div class="meal-row"><div><strong>${e.done ? '✓' : '•'} ${esc(e.exercise)}</strong><small>${e.setsData && e.setsData.length ? e.setsData.map(x => E.fmtRow(e.type || 'reps', x)).join(' · ') : (fmt(num(e.load)) + ' kg × ' + (e.reps || '—') + ' (' + e.sets + ' séries)')}${e.note ? '<br>“' + esc(e.note) + '”' : ''}</small></div></div>`).join('')}</div>${subj.self ? `<button class="btn danger block" data-act="delSession" data-id="${esc(s.id)}">Excluir este treino</button>` : ''}<button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
 }
 
 /* ---- edição da ficha (professor/admin) ---- */
 function exMenu(eid) {
   const d = curDay(), i = d.exercises.findIndex(e => e.id === eid), e = d.exercises[i], n = d.exercises.length;
-  openSheet(`<h2>${esc(e.name)}</h2><button class="menu-btn" data-act="demo" data-eid="${eid}">Ver demonstração</button><button class="menu-btn" data-act="pickSwap" data-eid="${eid}">Trocar demonstração</button><button class="menu-btn" data-act="editEx" data-eid="${eid}">Editar nome, séries, repetições e observação</button>${i > 0 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="-1">Mover para cima</button>` : ''}${i < n - 1 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="1">Mover para baixo</button>` : ''}<button class="menu-btn" data-act="delEx" data-eid="${eid}" style="color:var(--mut)">Remover da ficha</button>`);
+  openSheet(`<h2>${esc(e.name)}</h2><button class="menu-btn" data-act="demo" data-eid="${eid}">Ver demonstração</button><button class="menu-btn" data-act="pickSwap" data-eid="${eid}">Trocar demonstração</button><button class="menu-btn" data-act="editEx" data-eid="${eid}">Editar exercício (tipo, séries, vídeo, observação)</button>${i > 0 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="-1">Mover para cima</button>` : ''}${i < n - 1 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="1">Mover para baixo</button>` : ''}<button class="menu-btn" data-act="delEx" data-eid="${eid}" style="color:var(--mut)">Remover da ficha</button>`);
 }
-const exFields = (e = {}) => `<div class="field"><label>NOME</label><input id="eName" class="wide-input" value="${esc(e.name || '')}" placeholder="Ex.: Agachamento livre"></div><div class="two"><div class="field"><label>SÉRIES</label><input id="eSets" class="wide-input" inputmode="numeric" value="${esc(e.sets || '3')}"></div><div class="field"><label>REPETIÇÕES</label><input id="eReps" class="wide-input" value="${esc(e.reps || '8–12')}"></div></div><div class="field"><label>OBSERVAÇÃO PARA O ALUNO (OPCIONAL)</label><textarea id="eNote" class="wide-input" placeholder="Ex.: descer em 3 segundos, pausa embaixo">${esc(e.note || '')}</textarea></div>`;
 function pickSheet(mode, eid) {
   pick = { mode, eid }; openSheet(`<h2>${mode === 'add' ? 'Adicionar da biblioteca' : 'Trocar demonstração'}</h2><p class="muted" style="font-size:12.5px">Busque em português ou inglês.</p><input id="pickQ" class="wide-input" type="search" value="${esc(mode === 'swap' ? findEx(eid).name : '')}" placeholder="Ex.: supino inclinado" autocomplete="off"><div id="pickRes" class="stack"></div>${mode === 'swap' ? `<button class="btn ghost block" data-act="unlink" data-eid="${esc(eid)}">Sem demonstração</button>` : ''}`); renderPick();
 }
 let pick = { mode: 'add', eid: null };
 function renderPick() {
-  const box = $('pickRes'); if (!box) return;
-  if (X.state !== 'ok') { box.innerHTML = `<div class="empty">${X.state === 'error' ? 'Não foi possível carregar a biblioteca. Verifique a internet.' : 'Carregando biblioteca…'}</div>`; if (X.state !== 'loading') loadDB(renderPick); return }
-  const q = $('pickQ').value.trim(), r = (q ? searchDB(q, false) : X.DB).slice(0, 20);
-  box.innerHTML = r.map(e => `<div class="pick-row"><div class="pth">${demoHTML(e, 'sm')}</div><div><strong>${esc(exName(e))}</strong><small>${esc(e.primaryMuscles.map(mus).join(', '))} · ${esc(eqp(e.equipment))}</small></div><button class="btn small" data-act="usePick" data-id="${esc(e.id)}">${pick.mode === 'add' ? 'Adicionar' : 'Usar'}</button></div>`).join('') || '<div class="empty">Nenhum resultado. Tente outro termo.</div>';
+  const box = $('pickRes'); if (!box) return; const q = $('pickQ').value.trim(), mine = pick.mode === 'add' ? F.customMatches(q) : [];
+  const mineHTML = mine.length ? `<div class="eyebrow">MEUS EXERCÍCIOS</div>` + mine.map(i => `<div class="pick-row"><div class="pth"><span>${i.video ? '▶' : '★'}</span></div><div><strong>${esc(i.name)}</strong><small>${esc(E.TYPES[i.type || 'reps'].split(' (')[0])}${i.video ? ' · com vídeo' : ''}</small></div><button class="btn small" data-act="usePickCustom" data-id="${esc(i.id)}">Adicionar</button></div>`).join('') + '<div class="eyebrow" style="margin-top:6px">BIBLIOTECA</div>' : '';
+  if (X.state !== 'ok') { box.innerHTML = mineHTML + `<div class="empty">${X.state === 'error' ? 'Não foi possível carregar a biblioteca. Verifique a internet.' : 'Carregando biblioteca…'}</div>`; if (X.state !== 'loading') loadDB(renderPick); return }
+  const r = (q ? searchDB(q, false) : X.DB).slice(0, 20);
+  box.innerHTML = mineHTML + (r.map(e => `<div class="pick-row"><div class="pth">${demoHTML(e, 'sm')}</div><div><strong>${esc(exName(e))}</strong><small>${esc(e.primaryMuscles.map(mus).join(', '))} · ${esc(eqp(e.equipment))}</small></div><button class="btn small" data-act="usePick" data-id="${esc(e.id)}">${pick.mode === 'add' ? 'Adicionar' : 'Usar'}</button></div>`).join('') || '<div class="empty">Nenhum resultado. Tente outro termo.</div>');
 }
 function dayForm(title, val, act) { openSheet(`<h2>${title}</h2><div class="field"><label>NOME DO DIA</label><input id="dName" class="wide-input" value="${esc(val)}" placeholder="Ex.: Segunda · Peito e tríceps"></div><button class="btn block" data-act="${act}">Salvar</button>`); setTimeout(() => { const i = $('dName'); if (i) { i.focus(); i.select() } }, 60) }
 
@@ -321,7 +372,7 @@ function detailSheet(id, eid) {
 
 /* ============ biblioteca ============ */
 const lib = { q: '', muscle: '', equip: '', level: '', favs: false, shown: 24 }; let libBuilt = false;
-function enterLibrary() { if (X.state === 'idle' || X.state === 'error') loadDB(() => { buildLibUI(); renderLibResults(); paintLibStatus() }); buildLibUI(); paintLibStatus(); renderLibResults() }
+function enterLibrary() { const m = me.role !== 'aluno'; $('libSeg').classList.toggle('hidden', !m); if (!m) { $('libDb').classList.remove('hidden'); $('myLib').classList.add('hidden') } else if (!$('myLib').classList.contains('hidden')) F.renderMyLib(); if (X.state === 'idle' || X.state === 'error') loadDB(() => { buildLibUI(); renderLibResults(); paintLibStatus() }); buildLibUI(); paintLibStatus(); renderLibResults() }
 function buildLibUI() {
   if (libBuilt || !X.DB.length) return; libBuilt = true;
   $('libChips').innerHTML = MUSCLE_CHIPS.map(([v, l]) => `<button class="chip ${v === lib.muscle ? 'active' : ''}" data-act="libMuscle" data-v="${v}">${l}</button>`).join('');
@@ -387,11 +438,11 @@ const mealsSorted = () => subj.diet.meals.slice().sort((a, b) => String(a.time |
 function renderDiet() {
   const self = subj.self, edit = subj.canEdit, D = subj.diet, tk = todayKey(), done = (S().mealsDone && S().mealsDone[tk]) || [];
   $('dTitle').textContent = self ? 'Minha dieta' : 'Dieta do aluno'; $('dEyebrow').textContent = self ? 'Combustível para treinar' : 'Plano alimentar';
-  $('dSub').textContent = self ? 'Siga as refeições do seu professor e registre a proteína do dia.' : 'Monte as refeições e a meta. O aluno vê na hora.';
-  let h = edit ? `<div class="footer-actions"><button class="btn small secondary" data-act="addMeal">+ Refeição</button><button class="btn small ghost" data-act="dietGoal">Meta e orientações</button></div>` : '';
-  if (D.guidance || D.goal) h += `<div class="card stack"><div class="eyebrow">ORIENTAÇÕES DO PROFESSOR</div>${D.goal ? `<div style="font-size:15px;font-weight:700">Meta de proteína: ${fmt(D.goal, 0)} g por dia</div>` : ''}${D.guidance ? `<p style="font-size:13.5px;line-height:1.65;white-space:pre-wrap">${esc(D.guidance)}</p>` : ''}</div>`;
-  h += mealsSorted().map(m => `<div class="card mealcard ${self && done.includes(m.id) ? 'done' : ''}"><div class="top"><div><div class="mtime">${esc(m.time || '')}</div><h3>${esc(m.name)}</h3></div>${edit ? `<div class="minirow"><button data-act="editMeal" data-id="${m.id}" aria-label="Editar">✎</button><button data-act="delMeal" data-id="${m.id}" aria-label="Remover">×</button></div>` : `<button class="btn small ${done.includes(m.id) ? 'secondary' : ''}" data-act="mealDone" data-id="${m.id}">${done.includes(m.id) ? 'Feita ✓' : 'Marcar feita'}</button>`}</div><ul>${(m.items || []).map(i => `<li>${esc(i)}</li>`).join('')}</ul>${m.note ? `<div class="note">${esc(m.note)}</div>` : ''}</div>`).join('');
-  if (!D.meals.length) h += `<div class="empty">${self ? 'Seu professor ainda não montou a sua dieta.' : 'Nenhuma refeição cadastrada. Toque em “+ Refeição”.'}</div>`;
+  $('dSub').textContent = self ? (edit ? 'Monte suas refeições e registre a proteína do dia.' : 'Siga as refeições do seu professor e registre a proteína do dia.') : 'Monte as refeições e a meta. O aluno vê na hora.';
+  let h = edit ? `<div class="footer-actions"><button class="btn small secondary" data-act="addMeal">+ Refeição</button><button class="btn small ghost" data-act="dietGoal">Meta e orientações</button><button class="btn small ghost" data-act="tplOpen" data-k="diet">Modelos</button></div>` : '';
+  if (D.guidance || D.goal) h += `<div class="card stack"><div class="eyebrow">${self && edit ? 'ORIENTAÇÕES' : 'ORIENTAÇÕES DO PROFESSOR'}</div>${D.goal ? `<div style="font-size:15px;font-weight:700">Meta de proteína: ${fmt(D.goal, 0)} g por dia</div>` : ''}${D.guidance ? `<p style="font-size:13.5px;line-height:1.65;white-space:pre-wrap">${esc(D.guidance)}</p>` : ''}</div>`;
+  h += mealsSorted().map(m => `<div class="card mealcard ${self && done.includes(m.id) ? 'done' : ''}"><div class="top"><div><div class="mtime">${esc(m.time || '')}</div><h3>${esc(m.name)}</h3></div><div style="display:flex;gap:8px;align-items:center">${self ? `<button class="btn small ${done.includes(m.id) ? 'secondary' : ''}" data-act="mealDone" data-id="${m.id}">${done.includes(m.id) ? 'Feita ✓' : 'Marcar feita'}</button>` : ''}${edit ? `<div class="minirow"><button data-act="editMeal" data-id="${m.id}" aria-label="Editar">✎</button><button data-act="delMeal" data-id="${m.id}" aria-label="Remover">×</button></div>` : ''}</div></div><ul>${(m.items || []).map(i => `<li>${esc(i)}</li>`).join('')}</ul>${m.note ? `<div class="note">${esc(m.note)}</div>` : ''}</div>`).join('');
+  if (!D.meals.length) h += `<div class="empty">${edit ? 'Nenhuma refeição cadastrada. Toque em “+ Refeição” ou use um modelo.' : 'Seu professor ainda não montou a sua dieta.'}</div>`;
   if (!self) { const pr = (S().proteinLog && S().proteinLog[tk]) || 0; h += `<div class="card stack"><h3 class="section-title">Registro do aluno hoje</h3><div class="muted" style="font-size:13px;line-height:1.6">Proteína registrada: <b style="color:var(--text)">${fmt(pr)} g</b> de ${fmt(proteinGoal(), 0)} g · Refeições marcadas: <b style="color:var(--text)">${done.length}</b> de ${D.meals.length}</div></div>` }
   $('dietPlan').innerHTML = h; $('dietTracker').classList.toggle('hidden', !self); if (self) renderTracker();
 }
@@ -412,16 +463,29 @@ function mealSheet(id) {
 const badge = u => u.active === false ? '<span class="badge off">Desativado</span>' : '<span class="badge">Ativo</span>';
 let studentQ = '';
 function renderStudents() {
-  const adm = me.role === 'admin', list = usersCache.filter(u => u.role === 'aluno'), act = list.filter(u => u.active !== false).length;
-  $('studentsBody').innerHTML = `<div><div class="eyebrow">${adm ? 'Visão geral' : 'Seus alunos'}</div><h2 class="page-title">Alunos</h2><p class="muted" style="font-size:13px">${adm ? 'Todos os alunos do sistema.' : 'Crie contas, monte treinos e dietas e acompanhe a evolução.'}</p></div>
-  <div class="stats"><div class="stat"><div class="label">TOTAL</div><div class="value">${list.length}</div><div class="sub">alunos</div></div><div class="stat"><div class="label">ATIVOS</div><div class="value">${act}</div><div class="sub">${list.length - act} desativado${list.length - act === 1 ? '' : 's'}</div></div></div>
-  <div class="row" style="gap:8px"><input id="studentQ" class="wide-input" type="search" placeholder="Buscar aluno…" value="${esc(studentQ)}" autocomplete="off">${adm ? '' : `<button class="btn" data-act="newUser" data-role="aluno" style="white-space:nowrap">+ Novo</button>`}</div><div class="stack" id="studentList"></div>`;
-  paintStudents();
+  const adm = me.role === 'admin', list = usersCache.filter(u => u.role === 'aluno' || (adm && u.role === 'solo')), act = list.filter(u => u.active !== false).length;
+  $('studentsBody').innerHTML = `<div><div class="eyebrow">${adm ? 'Visão geral' : 'Seus alunos'}</div><h2 class="page-title">${adm ? 'Alunos' : 'Alunos'}</h2><p class="muted" style="font-size:13px">${adm ? 'Todos os alunos e usuários solo do sistema.' : 'Crie contas ou convide por link, monte treinos e dietas e acompanhe a evolução.'}</p></div>
+  <div id="dash" class="stack"><div class="stats"><div class="stat"><div class="label">TOTAL</div><div class="value">${list.length}</div><div class="sub">${adm ? 'usuários' : 'alunos'}</div></div><div class="stat"><div class="label">ATIVOS</div><div class="value">${act}</div><div class="sub">${list.length - act} desativado${list.length - act === 1 ? '' : 's'}</div></div></div></div>
+  <div class="row" style="gap:8px"><input id="studentQ" class="wide-input" type="search" placeholder="Buscar aluno…" value="${esc(studentQ)}" autocomplete="off">${adm ? '' : `<button class="btn secondary" data-act="inviteOpen" style="white-space:nowrap">Convidar</button><button class="btn" data-act="newUser" data-role="aluno" style="white-space:nowrap">+ Novo</button>`}</div><div class="stack" id="studentList"></div>`;
+  paintDash(); paintStudents();
+}
+const alunos = () => usersCache.filter(u => u.role === 'aluno');
+function paintDash() { if (me.role === 'professor' && $('dash') && alunos().every(u => u.uid in F.sums)) $('dash').innerHTML = F.dashHTML(alunos()) }
+function openStudentsPage() {
+  renderStudents();
+  loadUsers().then(async () => {
+    if (page !== 'students' || subj) return; renderStudents();
+    if (me.role === 'professor') { await F.loadSummaries(alunos()); if (page === 'students' && !subj) { paintDash(); paintStudents() } }
+  }).catch(() => { });
 }
 function paintStudents() {
-  const q = normalize(studentQ), adm = me.role === 'admin';
-  const list = usersCache.filter(u => u.role === 'aluno' && (!q || normalize(u.name + ' ' + loginOf(u.email)).includes(q)));
-  $('studentList').innerHTML = list.map(u => { const p = adm ? usersCache.find(x => x.uid === u.professorId) : null; return `<button class="urow" data-act="openStudent" data-id="${u.uid}"><div class="avatar">${esc(initial(u.name))}</div><div class="uinfo"><strong>${esc(u.name)}</strong><small>${esc(loginOf(u.email))}${p ? ' · Prof. ' + esc(p.name) : ''}</small></div>${badge(u)}</button>` }).join('') || `<div class="empty">${usersCache.some(u => u.role === 'aluno') ? 'Nenhum aluno encontrado.' : (adm ? 'Ainda não há alunos cadastrados.' : 'Você ainda não tem alunos. Toque em “+ Novo” para criar o primeiro.')}</div>`;
+  if (!$('studentList')) return;
+  const q = normalize(studentQ), adm = me.role === 'admin', prof = me.role === 'professor';
+  const list = usersCache.filter(u => (u.role === 'aluno' || (adm && u.role === 'solo')) && (!q || normalize(u.name + ' ' + loginOf(u.email)).includes(q)));
+  $('studentList').innerHTML = list.map(u => {
+    const p = adm ? usersCache.find(x => x.uid === u.professorId) : null, m = prof && u.uid in F.sums ? F.metaOf(u) : null;
+    return `<button class="urow" data-act="openStudent" data-id="${u.uid}"><div class="avatar">${esc(initial(u.name))}</div><div class="uinfo"><strong>${esc(u.name)}${m && m.newMsg ? ' <span class="dot" title="Recado novo"></span>' : ''}</strong><small>${esc(m ? m.line : loginOf(u.email))}${p ? ' · Prof. ' + esc(p.name) : ''}${u.role === 'solo' ? ' · Treino próprio' : ''}</small></div>${m && m.alert ? '<span class="badge warn">Parado</span>' : badge(u)}</button>`
+  }).join('') || `<div class="empty">${usersCache.some(u => u.role === 'aluno' || u.role === 'solo') ? 'Nenhum aluno encontrado.' : (adm ? 'Ainda não há alunos cadastrados.' : 'Você ainda não tem alunos. Toque em “Convidar” para enviar um link ou em “+ Novo” para criar a conta.')}</div>`;
 }
 function renderProfessors() {
   const list = usersCache.filter(u => u.role === 'professor'), act = list.filter(u => u.active !== false).length, total = usersCache.filter(u => u.role === 'aluno').length;
@@ -446,6 +510,7 @@ function renderSDetail() {
   const u = subj.profile, ws = weekStats(), last = subj.sessions[subj.sessions.length - 1], tk = todayKey();
   $('sdetailBody').innerHTML = `<div class="card stack"><div class="profile"><div class="avatar lg">${esc(initial(u.name))}</div><div><h2>${esc(u.name)}</h2><p>${esc(loginOf(u.email))}</p>${badge(u)}</div></div></div>
   <div class="stats"><div class="stat"><div class="label">TREINOS</div><div class="value">${subj.sessions.length}</div><div class="sub">${ws.n} nesta semana</div></div><div class="stat"><div class="label">ÚLTIMO TREINO</div><div class="value" style="font-size:20px;margin-top:14px">${last ? ago(last.date) : '—'}</div><div class="sub">${last ? esc(last.name.split(' · ')[0]) : 'sem registros'}</div></div></div>
+  ${u.role === 'aluno' ? `<button class="urow" data-act="chatOpen"><div class="avatar">R</div><div class="uinfo"><strong>Recados</strong><small>Enviar mensagem para ${esc(String(u.name).split(' ')[0])}</small></div>${ic('chevron', 18)}</button>` : ''}
   <div class="card stack"><h3 class="section-title">Gerenciar aluno</h3><div class="field"><label>NOME</label><div class="row" style="gap:8px"><input id="rnName" class="wide-input" value="${esc(u.name)}"><button class="btn secondary small" data-act="renameUser" data-id="${subj.uid}">Salvar</button></div></div><button class="btn ${u.active === false ? '' : 'secondary'} block" data-act="toggleUser" data-id="${subj.uid}">${u.active === false ? 'Reativar aluno' : 'Desativar aluno'}</button><p class="notice">Desativado, o aluno não consegue entrar. Treinos e histórico são mantidos.</p></div>
   <div class="card stack"><h3 class="section-title">Treinos recentes</h3>${subj.sessions.slice().reverse().slice(0, 8).map(s => `<div class="meal-row"><div><strong>${esc(s.name)}</strong><small>${new Date(s.date).toLocaleDateString('pt-BR')}${s.volume ? ' · ' + fmt(s.volume, 0) + ' kg' : ''}${s.note ? ' · “' + esc(s.note.slice(0, 60)) + '”' : ''}</small></div><button class="btn small ghost" data-act="viewSession" data-id="${esc(s.id)}">Ver</button></div>`).join('') || '<div class="empty">O aluno ainda não registrou treinos.</div>'}</div>`;
 }
@@ -462,17 +527,20 @@ function renderAccount() {
   <div class="card"><div class="profile"><div class="avatar lg">${esc(initial(me.name))}</div><div><h2>${esc(me.name)}</h2><p>${esc(loginOf(me.email))}</p><span class="badge plain">${ROLE[me.role]}</span></div></div></div>
   <div class="card stack"><h3 class="section-title">Aparência</h3><div class="seg"><button class="${dark ? 'on' : ''}" data-act="theme" data-t="dark">Escuro</button><button class="${dark ? '' : 'on'}" data-act="theme" data-t="light">Claro</button></div></div>
   <div class="card stack"><h3 class="section-title">Alterar senha</h3><div class="field"><label>SENHA ATUAL</label><input id="pwCur" class="wide-input" type="password" autocomplete="current-password"></div><div class="field"><label>NOVA SENHA (MÍNIMO 6)</label><input id="pwNew" class="wide-input" type="password" autocomplete="new-password"></div><div class="auth-err" id="pwErr"></div><button class="btn secondary" data-act="changePw">Atualizar senha</button></div>
+  ${me.role === 'admin' ? `<div class="card stack"><h3 class="section-title">Cadastro livre</h3><label class="switch"><span>Permitir que pessoas criem conta para treinar sozinhas</span><input type="checkbox" id="soloToggle" ${soloOn ? 'checked' : ''}></label><p class="notice">Quando ligado, a tela de login mostra “Criar conta”. Quem entra assim não tem professor.</p></div>` : ''}
   <button class="btn ghost block" data-act="logout">Sair da conta</button>`;
 }
 
 /* ============ cronômetro de descanso ============ */
-const T = { total: 90, remaining: 90, running: false, end: 0, iv: null, active: false }; let AC = null;
+const T = { label: 'DESCANSO', total: 90, remaining: 90, running: false, end: 0, iv: null, active: false }; let AC = null;
 function ac() { try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.state === 'suspended') AC.resume() } catch { } }
 document.addEventListener('click', ac, { once: true });
 function beep() { try { ac();[0, .22, .44].forEach((t, i) => { const o = AC.createOscillator(), g = AC.createGain(); o.type = 'sine'; o.frequency.value = i === 2 ? 1175 : 880; const n = AC.currentTime + t; g.gain.setValueAtTime(.0001, n); g.gain.exponentialRampToValueAtTime(.35, n + .02); g.gain.exponentialRampToValueAtTime(.0001, n + .18); o.connect(g); g.connect(AC.destination); o.start(n); o.stop(n + .2) }) } catch { } }
-function startRest(sec) { T.total = sec; T.remaining = sec; T.active = true; runTimer() }
+function tone(f = 880, ms = 150) { try { ac(); const o = AC.createOscillator(), g = AC.createGain(), n = AC.currentTime; o.type = 'sine'; o.frequency.value = f; g.gain.setValueAtTime(.0001, n); g.gain.exponentialRampToValueAtTime(.35, n + .02); g.gain.exponentialRampToValueAtTime(.0001, n + ms / 1000); o.connect(g); g.connect(AC.destination); o.start(n); o.stop(n + ms / 1000 + .05); navigator.vibrate && navigator.vibrate(40) } catch { } }
+function applyInterval(eid, rounds) { const r = setRow(eid, 0); r.rounds = String(rounds); r.done = true; touch(); saveState(); renderWorkouts() }
+function startRest(sec, label) { T.label = label || 'DESCANSO'; T.total = sec; T.remaining = sec; T.active = true; runTimer() }
 function runTimer() { clearInterval(T.iv); T.running = true; T.end = Date.now() + T.remaining * 1000; T.iv = setInterval(tick, 250); renderTimer() }
-function tick() { T.remaining = Math.max(0, Math.ceil((T.end - Date.now()) / 1000)); if (T.remaining <= 0) { clearInterval(T.iv); T.running = false; beep(); try { navigator.vibrate && navigator.vibrate([250, 100, 250]) } catch { } toast('Descanso finalizado! Próxima série.'); setTimeout(() => { if (!T.running && T.remaining <= 0) { T.active = false; renderTimer() } }, 4000) } renderTimer() }
+function tick() { T.remaining = Math.max(0, Math.ceil((T.end - Date.now()) / 1000)); if (T.remaining <= 0) { clearInterval(T.iv); T.running = false; beep(); try { navigator.vibrate && navigator.vibrate([250, 100, 250]) } catch { } toast(T.label === 'DESCANSO' ? 'Descanso finalizado! Próxima série.' : 'Tempo!'); setTimeout(() => { if (!T.running && T.remaining <= 0) { T.active = false; renderTimer() } }, 4000) } renderTimer() }
 function toggleTimer() { if (T.running) { clearInterval(T.iv); T.running = false; renderTimer() } else { if (T.remaining <= 0) T.remaining = T.total; T.active = true; runTimer() } }
 function resetTimer() { clearInterval(T.iv); T.running = false; T.remaining = T.total; renderTimer() }
 function dismissTimer() { clearInterval(T.iv); T.running = false; T.active = false; T.remaining = T.total; renderTimer() }
@@ -480,7 +548,7 @@ const stopAllTimers = dismissTimer;
 function addTime(s) { T.remaining = Math.max(1, T.remaining + s); T.total = Math.max(T.total, T.remaining); if (T.running) T.end = Date.now() + T.remaining * 1000; renderTimer() }
 function renderTimer() {
   $('restBar').classList.toggle('hidden', !T.active); const pct = T.total ? 100 * (1 - T.remaining / T.total) : 0;
-  $('rbTime').textContent = mmss(T.remaining); $('rbProg').style.width = pct + '%'; $('rbToggle').textContent = T.running ? 'Pausar' : 'Iniciar'; $('rbLabel').textContent = T.remaining <= 0 ? 'BORA!' : 'DESCANSO';
+  $('rbTime').textContent = mmss(T.remaining); $('rbProg').style.width = pct + '%'; $('rbToggle').textContent = T.running ? 'Pausar' : 'Iniciar'; $('rbLabel').textContent = T.remaining <= 0 ? 'BORA!' : T.label;
   const d = $('tsDisplay'); if (d) { d.textContent = mmss(T.remaining); $('tsProg').style.width = pct + '%'; $('tsToggle').textContent = T.running ? 'Pausar' : 'Iniciar'; document.querySelectorAll('.tpresets button').forEach(b => b.classList.toggle('active', +b.dataset.s === T.total)) }
 }
 function timerSheet() { openSheet(`<h2>Descanso</h2><div class="timer-number" id="tsDisplay">${mmss(T.remaining)}</div><div class="progress"><div id="tsProg"></div></div><div class="tpresets">${[30, 60, 90, 120, 180].map(s => `<button data-act="tPreset" data-s="${s}">${mmss(s)}</button>`).join('')}</div><div class="footer-actions" style="justify-content:center"><button class="btn" id="tsToggle" data-act="tToggle">Iniciar</button><button class="btn secondary" data-act="tReset">Zerar</button></div><button class="btn ghost block" data-act="closeSheet">Fechar</button>`); renderTimer() }
@@ -511,12 +579,12 @@ const ACT = {
   renameDay: () => dayForm('Renomear dia', curDay().name, 'saveRename'),
   saveRename: () => { const n = $('dName').value.trim(); if (n) { curDay().name = n; savePlan() } closeSheet(); renderWorkouts() },
   delDay: () => { if (!confirm('Excluir "' + curDay().name + '" e todos os seus exercícios? O histórico do aluno é mantido.')) return; subj.plan.days = subj.plan.days.filter(d => d.id !== sel); sel = null; setSelDefault(); savePlan(); closeSheet(); renderWorkouts() },
-  addExMenu: () => openSheet(`<h2>Novo exercício</h2><button class="menu-btn" data-act="pickAdd">Escolher na biblioteca (com demonstração)</button><p class="muted" style="font-size:12px">…ou crie manualmente:</p>${exFields()}<button class="btn block" data-act="createEx">Adicionar à ficha</button>`),
+  addExMenu: () => openSheet(`<h2>Novo exercício</h2><button class="menu-btn" data-act="pickAdd">Escolher na biblioteca${me.role !== 'aluno' ? ' ou em Meus exercícios' : ''}</button><p class="muted" style="font-size:12px">…ou crie manualmente:</p>${F.exFormHTML()}<button class="btn block" data-act="createEx">Adicionar à ficha</button>`),
   pickAdd: () => pickSheet('add'), pickSwap: d => pickSheet('swap', d.eid),
-  createEx: () => { const n = $('eName').value.trim(); if (!n) { alert('Digite o nome do exercício.'); return } curDay().exercises.push({ id: uid(), name: n, sets: String(parseInt($('eSets').value) || 3), reps: $('eReps').value.trim() || '8–12', note: $('eNote').value.trim(), lib: '' }); savePlan(); closeSheet(); renderWorkouts() },
+  createEx: () => { const o = F.readExForm(); if (!o.name) { alert('Digite o nome do exercício.'); return } curDay().exercises.push({ id: uid(), lib: '', ...o }); savePlan(); closeSheet(); renderWorkouts() },
   exMenu: d => exMenu(d.eid),
-  editEx: d => { const e = findEx(d.eid); openSheet(`<h2>Editar exercício</h2>${exFields(e)}<button class="btn block" data-act="saveEx" data-eid="${d.eid}">Salvar</button>`) },
-  saveEx: d => { const e = findEx(d.eid), n = $('eName').value.trim(); if (!n) { alert('Digite o nome.'); return } e.name = n; e.sets = String(parseInt($('eSets').value) || 3); e.reps = $('eReps').value.trim() || '8–12'; e.note = $('eNote').value.trim(); savePlan(); closeSheet(); renderWorkouts() },
+  editEx: d => { const e = findEx(d.eid); openSheet(`<h2>Editar exercício</h2>${F.exFormHTML(e)}<button class="btn block" data-act="saveEx" data-eid="${d.eid}">Salvar</button>`) },
+  saveEx: d => { const e = findEx(d.eid), o = F.readExForm(); if (!o.name) { alert('Digite o nome.'); return } Object.assign(e, o); savePlan(); closeSheet(); renderWorkouts() },
   moveEx: d => { const a = curDay().exercises, i = a.findIndex(e => e.id === d.eid), j = i + +d.d; if (j < 0 || j >= a.length) return;[a[i], a[j]] = [a[j], a[i]]; savePlan(); closeSheet(); renderWorkouts() },
   delEx: d => { if (!confirm('Remover este exercício da ficha?')) return; const day = curDay(); day.exercises = day.exercises.filter(e => e.id !== d.eid); savePlan(); closeSheet(); renderWorkouts() },
   usePick: d => {
@@ -530,7 +598,7 @@ const ACT = {
   rmSet: d => { const e = findEx(d.eid), n = nSets(e); if (n <= 1) return; const dr = draftOf(); dr.n[e.id] = n - 1; if (dr.sets[e.id]) dr.sets[e.id].length = Math.min(dr.sets[e.id].length, n - 1); saveState(); renderWorkouts() },
   clearDraft: () => { if (!confirm('Limpar todos os campos deste treino?')) return; delete S().drafts[sel]; saveStateNow(); renderWorkouts() },
   finish: () => finishWorkout(),
-  demo: d => { const e = findEx(d.eid), x = e && exFor(e); if (x) detailSheet(x.id, d.eid); else if (subj.canEdit) pickSheet('swap', d.eid); else toast(X.state === 'ok' ? 'Sem demonstração para este exercício.' : 'Carregando demonstrações…') },
+  demo: d => { const e = findEx(d.eid); if (e && (e.video || e.howto)) { F.customDetail(e); return } const x = e && exFor(e); if (x) detailSheet(x.id, d.eid); else if (subj.canEdit) pickSheet('swap', d.eid); else toast(X.state === 'ok' ? 'Sem demonstração para este exercício.' : 'Carregando demonstrações…') },
   openEx: d => detailSheet(d.id), fav: (d, el) => { const f = favs(), i = f.indexOf(d.id); if (i >= 0) f.splice(i, 1); else f.push(d.id); setFavs(f); el.textContent = f.includes(d.id) ? '★' : '☆'; if (page === 'library') renderLibResults() },
   translate: async (d, el) => {
     const e = X.MAP[d.id]; el.disabled = true; el.textContent = 'Traduzindo…'; const out = await autoTranslate(e.instructions);
@@ -541,7 +609,7 @@ const ACT = {
   libFav: () => { lib.favs = !lib.favs; lib.shown = 24; renderLibResults() }, libMore: () => { lib.shown += 24; renderLibResults() },
   retryDB: () => retryDB(() => { buildLibUI(); renderLibResults(); paintLibStatus(); rerender() }),
   viewSession: d => viewSession(d.id),
-  delSession: d => { if (!confirm('Excluir este treino do histórico?')) return; deleteDoc(doc(db, 'users', subj.uid, 'sessions', d.id)).catch(e => toast(errMsg(e))); subj.sessions = subj.sessions.filter(s => s.id !== d.id); closeSheet(); rerender() },
+  delSession: d => { if (!confirm('Excluir este treino do histórico?')) return; deleteDoc(doc(db, 'users', subj.uid, 'sessions', d.id)).catch(e => toast(errMsg(e))); subj.sessions = subj.sessions.filter(s => s.id !== d.id); saveSummary(); closeSheet(); rerender() },
   saveWeight: () => { const v = num($('bodyWeight').value); if (!v || v < 1 || v > 500) { alert('Digite um peso válido em kg.'); return } const k = todayKey(), ex = S().weights.find(w => w.date === k); if (ex) ex.weight = v; else S().weights.push({ date: k, weight: v }); S().weights.sort((a, b) => a.date.localeCompare(b.date)); saveStateNow(); $('bodyWeight').value = ''; renderProgress(); toast('Peso salvo!') },
   undoWeight: () => { S().weights.pop(); saveStateNow(); renderProgress() },
   export: () => { const x = { exportedAt: new Date().toISOString(), sessions: subj.sessions.map(s => { const o = { ...s }; delete o.id; return o }), weights: S().weights, proteinLog: S().proteinLog }; const url = URL.createObjectURL(new Blob([JSON.stringify(x, null, 2)], { type: 'application/json' })), a = document.createElement('a'); a.href = url; a.download = 'ares-gym-backup-' + todayKey() + '.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000) },
@@ -562,8 +630,10 @@ const ACT = {
   renameUser: async d => { const n = $('rnName').value.trim(); if (!n) return; try { await updateDoc(doc(db, 'users', d.id), { name: n }) } catch (e) { toast(errMsg(e)); return } const u = usersCache.find(x => x.uid === d.id); if (u) u.name = n; if (subj && subj.uid === d.id) subj.profile.name = n; toast('Nome atualizado.'); closeSheet(); go(page) },
   toggleUser: d => { const u = usersCache.find(x => x.uid === d.id); if (!u) return; const off = u.active !== false; if (!confirm(off ? `Desativar ${u.name}? A pessoa não conseguirá mais entrar.` : `Reativar ${u.name}?`)) return; setActive(d.id, !off) },
   resetPw: async d => { const u = usersCache.find(x => x.uid === d.id); try { await sendPasswordResetEmail(auth, u.email); toast('Link enviado para ' + u.email) } catch (e) { toast(errMsg(e)) } },
-  openTimer: () => timerSheet(), tToggle: () => { ac(); toggleTimer() }, tReset: () => resetTimer(), tDismiss: () => dismissTimer(), tAdd: d => addTime(+d.s), tPreset: d => { ac(); T.total = +d.s; T.remaining = +d.s; T.active = true; runTimer() }
+  openTimer: () => timerSheet(), tToggle: () => { ac(); toggleTimer() }, tReset: () => resetTimer(), tDismiss: () => dismissTimer(), tAdd: d => addTime(+d.s), tPreset: d => { ac(); T.label = 'DESCANSO'; T.total = +d.s; T.remaining = +d.s; T.active = true; runTimer() }
 };
+F.init({ db, me: () => me, subj: () => subj, state: () => S(), toast, openSheet, closeSheet, rerender, saveStateNow, saveSummary, findEx, curDay, savePlan, saveDiet, setSel: id => { sel = id }, wake, releaseWake, tone, applyInterval, startTimer: startRest });
+Object.assign(ACT, F.ACT);
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el) return; const f = ACT[el.dataset.act]; if (f) f(el.dataset, el) });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault(); const fn = FORM[f.dataset.form]; if (fn) fn(f) });
 document.addEventListener('input', e => {
@@ -578,15 +648,17 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.classList.contains('setchk')) {
-    const eid = t.dataset.eid, s = +t.dataset.s, r = setRow(eid, s), row = t.closest('.setrow'), ex = findEx(eid); r.done = t.checked;
+    const eid = t.dataset.eid, s = +t.dataset.s, r = setRow(eid, s), row = t.closest('.setrow'), ex = findEx(eid), ty = E.typeOf(ex); r.done = t.checked;
     if (t.checked) {
-      const ls = lastSet(ex.name, s), prev = s > 0 ? setRow(eid, s - 1) : null, kgIn = row.querySelector('[data-f="kg"]'), rpIn = row.querySelector('[data-f="reps"]');
-      if (!r.kg) { const v = (ls && ls.kg) || (prev && prev.kg) || ''; if (v) { r.kg = v; kgIn.value = v } } if (!r.reps) { const v = (ls && ls.reps) || (prev && prev.reps) || ''; if (v) { r.reps = v; rpIn.value = v } }
+      const ls = lastSet(ex.name, s), prev = s > 0 ? setRow(eid, s - 1) : null, plan = { time: { secs: ex.secs }, cardio: { min: ex.min, km: ex.km } }[ty] || {};
+      (COLS[ty] || COLS.reps).forEach(([f]) => { if (r[f]) return; const v = ty === 'reps' ? ((ls && ls[f]) || (prev && prev[f]) || '') : (plan[f] || ''); const inp = row.querySelector(`[data-f="${f}"]`); if (v && inp) { r[f] = String(v); inp.value = v } });
     }
     row.classList.toggle('on', t.checked); const n = nSets(ex), a = draftOf().sets[eid] || []; t.closest('.exercise').classList.toggle('done', a.length >= n && a.slice(0, n).every(x => x.done));
-    touch(); saveState(); updateWP(); if (t.checked && S().settings.autoRest) { ac(); startRest(S().settings.rest) }
+    const list = curDay().exercises, ix = list.findIndex(x => x.id === eid), midGroup = ex.group && list[ix + 1] && list[ix + 1].group === ex.group;
+    touch(); saveState(); updateWP(); if (t.checked && S().settings.autoRest && (ty === 'reps' || ty === 'time') && !midGroup) { ac(); startRest(S().settings.rest) }
   }
   else if (t.id === 'exSel') renderExChart();
+  else if (t.id === 'soloToggle') { setDoc(doc(db, 'meta', 'config'), { soloSignup: t.checked }).then(() => { soloOn = t.checked; toast(t.checked ? 'Cadastro livre ligado.' : 'Cadastro livre desligado.') }).catch(e => { t.checked = !t.checked; toast(errMsg(e)) }) }
   else if (t.id === 'libEquip') { lib.equip = t.value; lib.shown = 24; renderLibResults() } else if (t.id === 'libLevel') { lib.level = t.value; lib.shown = 24; renderLibResults() }
   else if (t.id === 'setAuto') { S().settings.autoRest = t.checked; saveStateNow() } else if (t.id === 'setRest') { S().settings.rest = +t.value; saveStateNow() }
   else if (t.id === 'importFile') {
@@ -601,7 +673,7 @@ if (!CONFIGURED) { renderAuth('login') }
 else {
   onAuthStateChanged(auth, async user => {
     if (registering) return;
-    if (!user) { me = null; stopSubject(); subj = null; dismissTimer(); closeSheet(); await checkAdminExists(); const m = authMsg; authMsg = ''; renderAuth('login', m); return }
+    if (!user) { me = null; stopSubject(); subj = null; dismissTimer(); closeSheet(); await checkAdminExists(); await loadConfig(); await loadInvite(); const m = authMsg; authMsg = ''; renderAuth(invite ? 'invite' : 'login', m); return }
     await boot(user);
   });
 }
