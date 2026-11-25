@@ -259,7 +259,9 @@ function renderHome() {
 
 /* ============ treinos ============ */
 const curDay = () => subj.plan.days.find(d => d.id === sel) || null;
-const findEx = eid => { const d = curDay(); return d && d.exercises.find(e => e.id === eid) };
+const extrasOf = () => (S().drafts[sel] && S().drafts[sel].extras) || [];
+const allEx = () => { const d = curDay(); return d ? [...d.exercises, ...(subj.self ? extrasOf() : [])] : [] };
+const findEx = eid => allEx().find(e => e.id === eid);
 const draftOf = () => S().drafts[sel] || (S().drafts[sel] = { startedAt: null, note: '', sets: {}, n: {}, notes: {} });
 function nSets(e) { const t = E.typeOf(e); if (t === 'cardio' || t === 'interval') return 1; const d = S().drafts[sel]; return d && d.n && d.n[e.id] != null ? d.n[e.id] : (parseInt(e.sets) || 3) }
 function setRow(eid, s) { const d = draftOf(), a = d.sets[eid] || (d.sets[eid] = []); while (a.length <= s) a.push(E.blankRow()); return a[s] }
@@ -285,9 +287,9 @@ function renderWorkouts() {
   if (!day) { $('exerciseList').innerHTML = `<div class="empty">${edit ? 'Nenhum dia de treino ainda. Toque em “＋ Novo dia”, use um modelo ou cole um treino pronto.' : 'Seu professor ainda não montou o seu treino.'}</div>`; return }
   const d = S().drafts[sel] || { sets: {}, notes: {} };
   $('sessNote').value = d.note || '';
-  $('exerciseList').innerHTML = day.exercises.map((e, i) => {
+  $('exerciseList').innerHTML = allEx().map((e, i) => {
     const t = E.typeOf(e), lastTxt = lastLine(e, self);
-    const head = `<div class="ex-head"><button class="thumb" data-act="demo" data-eid="${e.id}" aria-label="Ver demonstração">${thumbHTML(e)}</button><div class="ex-info"><h3>${e.group ? `<span class="gtag">${esc(e.group)}</span>` : ''}${i + 1}. ${esc(e.name)}</h3><p>${esc(E.exSummary(e))}</p>${e.note ? `<p class="obs">${esc(e.note)}</p>` : ''}${lastTxt ? `<p class="last">${esc(lastTxt)}</p>` : ''}</div>${edit ? `<button class="icon-btn" data-act="exMenu" data-eid="${e.id}" aria-label="Opções">${ic('more', 18)}</button>` : ''}</div>`;
+    const head = `<div class="ex-head"><button class="thumb" data-act="demo" data-eid="${e.id}" aria-label="Ver demonstração">${thumbHTML(e)}</button><div class="ex-info"><h3>${e.extra ? '<span class="gtag">EXTRA</span>' : ''}${e.group ? `<span class="gtag">${esc(e.group)}</span>` : ''}${i + 1}. ${esc(e.name)}</h3><p class="exsum">${esc(E.exSummary(e))}</p>${e.note ? `<p class="obs">${esc(e.note)}</p>` : ''}${lastTxt ? `<p class="last">${esc(lastTxt)}</p>` : ''}</div>${e.extra ? `<button class="icon-btn" data-act="rmExtra" data-eid="${e.id}" aria-label="Remover extra">×</button>` : edit ? `<button class="icon-btn" data-act="exMenu" data-eid="${e.id}" aria-label="Opções">${ic('more', 18)}</button>` : ''}</div>`;
     if (!self) return `<div class="exercise">${head}</div>`;
     const rows = nSets(e), arr = d.sets[e.id] || [], cols = COLS[t] || COLS.reps; let all = rows > 0, rh = '';
     for (let s = 0; s < rows; s++) {
@@ -303,7 +305,7 @@ function renderWorkouts() {
 function updateWP() {
   if (page !== 'workouts' || !subj || !subj.self) return; const day = curDay(); if (!day) return;
   const d = S().drafts[sel]; let tot = 0, done = 0;
-  day.exercises.forEach(e => { const n = nSets(e); tot += n; if (d && d.sets[e.id]) d.sets[e.id].forEach((r, s) => { if (s < n && r.done) done++ }) });
+  allEx().forEach(e => { const n = nSets(e); tot += n; if (d && d.sets[e.id]) d.sets[e.id].forEach((r, s) => { if (s < n && r.done) done++ }) });
   $('wpText').textContent = done + '/' + tot + ' séries'; $('wpBar').style.width = (tot ? done / tot * 100 : 0) + '%';
   const st = d && d.startedAt; if (st) { const sec = Math.floor((Date.now() - st) / 1000); $('wpTime').textContent = Math.floor(sec / 60) + ':' + pad(sec % 60) } else $('wpTime').textContent = 'ainda não iniciado';
 }
@@ -311,12 +313,12 @@ setInterval(updateWP, 1000);
 function touch() { const d = draftOf(); if (!d.startedAt) d.startedAt = Date.now(); wake() }
 function finishWorkout() {
   const day = curDay(); if (!day) return; const d = S().drafts[sel]; const entries = []; let vol = 0, total = 0, planned = 0; const prs = [];
-  day.exercises.forEach(e => {
-    const t = E.typeOf(e); planned += nSets(e);
+  allEx().forEach(e => {
+    const t = E.typeOf(e); if (!e.extra) planned += nSets(e);
     const rows = ((d && d.sets[e.id]) || []).filter(r => r.done || E.rowHasData(r)), sd = rows.map(r => ({ kg: num(r.kg), reps: num(r.reps), secs: num(r.secs), km: num(r.km), min: num(r.min), rounds: num(r.rounds) }));
     let best = { kg: 0, reps: 0 }; if (t === 'reps') { sd.forEach(x => { if (x.kg > best.kg || (x.kg === best.kg && x.reps > best.reps)) best = x }); sd.forEach(x => { vol += x.kg * x.reps }) } total += sd.length;
     if (best.kg > 0) { const prev = maxLoadBefore(e.name); if (prev > 0 && best.kg > prev) prs.push({ exercise: e.name, load: best.kg, prev }) }
-    entries.push({ eid: e.id, exercise: e.name, type: t, load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets || ''), done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || '' });
+    entries.push({ eid: e.id, exercise: e.name, extra: !!e.extra, type: t, load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets || ''), done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || '' });
   });
   if (!total) { alert('Marque ao menos uma série (ou preencha os campos) antes de concluir.'); return }
   const dur = d && d.startedAt ? Math.round((Date.now() - d.startedAt) / 1000) : 0;
@@ -327,7 +329,7 @@ function finishWorkout() {
 }
 function viewSession(id) {
   const s = subj.sessions.find(x => x.id === id); if (!s) return;
-  openSheet(`<h2>${esc(s.name)}</h2><p class="muted" style="font-size:12px">${new Date(s.date).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${s.duration ? ' · ' + Math.round(s.duration / 60) + ' min' : ''} · ${fmt(s.volume || 0, 0)} kg de volume</p>${(s.prs || []).map(p => `<div class="pr">Recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg</div>`).join('')}${s.note ? `<div class="card"><div class="eyebrow">ANOTAÇÃO DO TREINO</div><p style="font-size:13.5px;line-height:1.6;margin-top:8px;white-space:pre-wrap">${esc(s.note)}</p></div>` : ''}<div class="stack">${s.entries.map(e => `<div class="meal-row"><div><strong>${e.done ? '✓' : '•'} ${esc(e.exercise)}</strong><small>${e.setsData && e.setsData.length ? e.setsData.map(x => E.fmtRow(e.type || 'reps', x)).join(' · ') : (fmt(num(e.load)) + ' kg × ' + (e.reps || '—') + ' (' + e.sets + ' séries)')}${e.note ? '<br>“' + esc(e.note) + '”' : ''}</small></div></div>`).join('')}</div>${subj.self ? `<button class="btn danger block" data-act="delSession" data-id="${esc(s.id)}">Excluir este treino</button>` : ''}<button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
+  openSheet(`<h2>${esc(s.name)}</h2><p class="muted" style="font-size:12px">${new Date(s.date).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}${s.duration ? ' · ' + Math.round(s.duration / 60) + ' min' : ''} · ${fmt(s.volume || 0, 0)} kg de volume</p>${(s.prs || []).map(p => `<div class="pr">Recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg</div>`).join('')}${s.note ? `<div class="card"><div class="eyebrow">ANOTAÇÃO DO TREINO</div><p style="font-size:13.5px;line-height:1.6;margin-top:8px;white-space:pre-wrap">${esc(s.note)}</p></div>` : ''}<div class="stack">${s.entries.map(e => `<div class="meal-row"><div><strong>${e.done ? '✓' : '•'} ${esc(e.exercise)}${e.extra ? ' · extra' : ''}</strong><small>${e.setsData && e.setsData.length ? e.setsData.map(x => E.fmtRow(e.type || 'reps', x)).join(' · ') : (fmt(num(e.load)) + ' kg × ' + (e.reps || '—') + ' (' + e.sets + ' séries)')}${e.note ? '<br>“' + esc(e.note) + '”' : ''}</small></div></div>`).join('')}</div>${subj.self ? `<button class="btn danger block" data-act="delSession" data-id="${esc(s.id)}">Excluir este treino</button>` : ''}<button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
 }
 
 /* ---- edição da ficha (professor/admin) ---- */
@@ -336,15 +338,17 @@ function exMenu(eid) {
   openSheet(`<h2>${esc(e.name)}</h2><button class="menu-btn" data-act="demo" data-eid="${eid}">Ver demonstração</button><button class="menu-btn" data-act="pickSwap" data-eid="${eid}">Trocar demonstração</button><button class="menu-btn" data-act="editEx" data-eid="${eid}">Editar exercício (tipo, séries, vídeo, observação)</button>${i > 0 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="-1">Mover para cima</button>` : ''}${i < n - 1 ? `<button class="menu-btn" data-act="moveEx" data-eid="${eid}" data-d="1">Mover para baixo</button>` : ''}<button class="menu-btn" data-act="delEx" data-eid="${eid}" style="color:var(--mut)">Remover da ficha</button>`);
 }
 function pickSheet(mode, eid) {
-  pick = { mode, eid }; openSheet(`<h2>${mode === 'add' ? 'Adicionar da biblioteca' : 'Trocar demonstração'}</h2><p class="muted" style="font-size:12.5px">Busque em português ou inglês.</p><input id="pickQ" class="wide-input" type="search" value="${esc(mode === 'swap' ? findEx(eid).name : '')}" placeholder="Ex.: supino inclinado" autocomplete="off"><div id="pickRes" class="stack"></div>${mode === 'swap' ? `<button class="btn ghost block" data-act="unlink" data-eid="${esc(eid)}">Sem demonstração</button>` : ''}`); renderPick();
+  pick = { mode, eid }; openSheet(`<h2>${mode === 'add' ? 'Adicionar da biblioteca' : mode === 'extra' ? 'Exercício extra' : 'Trocar demonstração'}</h2><p class="muted" style="font-size:12.5px">Busque em português ou inglês.</p><input id="pickQ" class="wide-input" type="search" value="${esc(mode === 'swap' ? findEx(eid).name : '')}" placeholder="Ex.: supino inclinado" autocomplete="off"><div id="pickRes" class="stack"></div>${mode === 'swap' ? `<button class="btn ghost block" data-act="unlink" data-eid="${esc(eid)}">Sem demonstração</button>` : ''}`); renderPick();
 }
 let pick = { mode: 'add', eid: null };
+function addExtra(ex) { const d = draftOf(); (d.extras || (d.extras = [])).push({ ...ex, extra: true }); touch(); saveState(); closeSheet(); renderWorkouts(); toast('Exercício extra: vale só para este treino.') }
+function addPicked(ex) { if (pick.mode === 'extra') { addExtra(ex); return } curDay().exercises.push(ex); savePlan(); closeSheet(); renderWorkouts(); toast('Adicionado — ajuste séries e reps em ⋯') }
 function renderPick() {
-  const box = $('pickRes'); if (!box) return; const q = $('pickQ').value.trim(), mine = pick.mode === 'add' ? F.customMatches(q) : [];
+  const box = $('pickRes'); if (!box) return; const q = $('pickQ').value.trim(), mine = pick.mode !== 'swap' ? F.customMatches(q) : [];
   const mineHTML = mine.length ? `<div class="eyebrow">MEUS EXERCÍCIOS</div>` + mine.map(i => `<div class="pick-row"><div class="pth"><span>${i.video ? '▶' : '★'}</span></div><div><strong>${esc(i.name)}</strong><small>${esc(E.TYPES[i.type || 'reps'].split(' (')[0])}${i.video ? ' · com vídeo' : ''}</small></div><button class="btn small" data-act="usePickCustom" data-id="${esc(i.id)}">Adicionar</button></div>`).join('') + '<div class="eyebrow" style="margin-top:6px">BIBLIOTECA</div>' : '';
   if (X.state !== 'ok') { box.innerHTML = mineHTML + `<div class="empty">${X.state === 'error' ? 'Não foi possível carregar a biblioteca. Verifique a internet.' : 'Carregando biblioteca…'}</div>`; if (X.state !== 'loading') loadDB(renderPick); return }
   const r = (q ? searchDB(q, false) : X.DB).slice(0, 20);
-  box.innerHTML = mineHTML + (r.map(e => `<div class="pick-row"><div class="pth">${demoHTML(e, 'sm')}</div><div><strong>${esc(exName(e))}</strong><small>${esc(e.primaryMuscles.map(mus).join(', '))} · ${esc(eqp(e.equipment))}</small></div><button class="btn small" data-act="usePick" data-id="${esc(e.id)}">${pick.mode === 'add' ? 'Adicionar' : 'Usar'}</button></div>`).join('') || '<div class="empty">Nenhum resultado. Tente outro termo.</div>');
+  box.innerHTML = mineHTML + (r.map(e => `<div class="pick-row"><div class="pth">${demoHTML(e, 'sm')}</div><div><strong>${esc(exName(e))}</strong><small>${esc(e.primaryMuscles.map(mus).join(', '))} · ${esc(eqp(e.equipment))}</small></div><button class="btn small" data-act="usePick" data-id="${esc(e.id)}">${pick.mode !== 'swap' ? 'Adicionar' : 'Usar'}</button></div>`).join('') || '<div class="empty">Nenhum resultado. Tente outro termo.</div>');
 }
 function dayForm(title, val, act) { openSheet(`<h2>${title}</h2><div class="field"><label>NOME DO DIA</label><input id="dName" class="wide-input" value="${esc(val)}" placeholder="Ex.: Segunda · Peito e tríceps"></div><button class="btn block" data-act="${act}">Salvar</button>`); setTimeout(() => { const i = $('dName'); if (i) { i.focus(); i.select() } }, 60) }
 
@@ -580,6 +584,9 @@ const ACT = {
   saveRename: () => { const n = $('dName').value.trim(); if (n) { curDay().name = n; savePlan() } closeSheet(); renderWorkouts() },
   delDay: () => { if (!confirm('Excluir "' + curDay().name + '" e todos os seus exercícios? O histórico do aluno é mantido.')) return; subj.plan.days = subj.plan.days.filter(d => d.id !== sel); sel = null; setSelDefault(); savePlan(); closeSheet(); renderWorkouts() },
   addExMenu: () => openSheet(`<h2>Novo exercício</h2><button class="menu-btn" data-act="pickAdd">Escolher na biblioteca${me.role !== 'aluno' ? ' ou em Meus exercícios' : ''}</button><p class="muted" style="font-size:12px">…ou crie manualmente:</p>${F.exFormHTML()}<button class="btn block" data-act="createEx">Adicionar à ficha</button>`),
+  extraAdd: () => openSheet(`<h2>Exercício extra</h2><p class="muted" style="font-size:12.5px;line-height:1.55">Fez algo a mais hoje? Registre aqui. Fica só neste treino e <b style="color:var(--text)">não muda a sua ficha</b>.</p><button class="menu-btn" data-act="pickExtra">Escolher na biblioteca${me.role !== 'aluno' ? ' ou em Meus exercícios' : ''}</button><p class="muted" style="font-size:12px">…ou digite:</p>${F.exFormHTML()}<button class="btn block" data-act="createExtra">Adicionar a este treino</button>`),
+  pickExtra: () => pickSheet('extra'), createExtra: () => { const o = F.readExForm(); if (!o.name) { alert('Digite o nome do exercício.'); return } addExtra({ id: uid(), lib: '', ...o }) },
+  rmExtra: d => { if (!confirm('Remover este exercício extra do treino de hoje?')) return; const dr = draftOf(); dr.extras = extrasOf().filter(e => e.id !== d.eid); delete dr.sets[d.eid]; saveState(); renderWorkouts() },
   pickAdd: () => pickSheet('add'), pickSwap: d => pickSheet('swap', d.eid),
   createEx: () => { const o = F.readExForm(); if (!o.name) { alert('Digite o nome do exercício.'); return } curDay().exercises.push({ id: uid(), lib: '', ...o }); savePlan(); closeSheet(); renderWorkouts() },
   exMenu: d => exMenu(d.eid),
@@ -589,6 +596,7 @@ const ACT = {
   delEx: d => { if (!confirm('Remover este exercício da ficha?')) return; const day = curDay(); day.exercises = day.exercises.filter(e => e.id !== d.eid); savePlan(); closeSheet(); renderWorkouts() },
   usePick: d => {
     const e = X.MAP[d.id]; if (!e) return;
+    if (pick.mode === 'extra') { addExtra({ id: uid(), name: exName(e), type: 'reps', sets: '3', reps: '8–12', note: '', lib: e.id }); return }
     if (pick.mode === 'add') { curDay().exercises.push({ id: uid(), name: exName(e), sets: '3', reps: '8–12', note: '', lib: e.id }); toast('Adicionado — ajuste séries e reps em ⋯') }
     else { const x = findEx(pick.eid); if (x) x.lib = e.id; toast('Demonstração atualizada!') }
     savePlan(); closeSheet(); renderWorkouts();
@@ -632,7 +640,7 @@ const ACT = {
   resetPw: async d => { const u = usersCache.find(x => x.uid === d.id); try { await sendPasswordResetEmail(auth, u.email); toast('Link enviado para ' + u.email) } catch (e) { toast(errMsg(e)) } },
   openTimer: () => timerSheet(), tToggle: () => { ac(); toggleTimer() }, tReset: () => resetTimer(), tDismiss: () => dismissTimer(), tAdd: d => addTime(+d.s), tPreset: d => { ac(); T.label = 'DESCANSO'; T.total = +d.s; T.remaining = +d.s; T.active = true; runTimer() }
 };
-F.init({ db, me: () => me, subj: () => subj, state: () => S(), toast, openSheet, closeSheet, rerender, saveStateNow, saveSummary, findEx, curDay, savePlan, saveDiet, setSel: id => { sel = id }, wake, releaseWake, tone, applyInterval, startTimer: startRest });
+F.init({ db, me: () => me, subj: () => subj, state: () => S(), toast, openSheet, closeSheet, rerender, saveStateNow, saveSummary, findEx, curDay, savePlan, saveDiet, setSel: id => { sel = id }, wake, releaseWake, tone, applyInterval, startTimer: startRest, addPicked });
 Object.assign(ACT, F.ACT);
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el) return; const f = ACT[el.dataset.act]; if (f) f(el.dataset, el) });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault(); const fn = FORM[f.dataset.form]; if (fn) fn(f) });

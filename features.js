@@ -234,7 +234,7 @@ export const ACT = {
   },
   myDel: d => { if (!confirm('Excluir este exercício da sua biblioteca? Fichas que já o usam não mudam.')) return; lib.items = lib.items.filter(i => i.id !== d.id); saveLib(); C.closeSheet(); renderMyLib() },
   myView: d => { const i = lib.items.find(x => x.id === d.id); if (!i) return; C.openSheet(`<h2>${esc(i.name)}</h2><div class="tags"><span class="tag">${esc(E.TYPES[i.type || 'reps'].split(' (')[0])}</span>${i.muscle ? `<span class="tag">${esc(MUS[i.muscle] || '')}</span>` : ''}</div>${E.videoHTML(i.video)}${i.howto ? `<div class="card"><p style="font-size:13.5px;line-height:1.65;white-space:pre-wrap">${esc(i.howto)}</p></div>` : ''}<button class="btn secondary block" data-act="myEdit" data-id="${i.id}">Editar</button><button class="btn danger block" data-act="myDel" data-id="${i.id}">Excluir</button><button class="btn ghost block" data-act="closeSheet">Fechar</button>`) },
-  usePickCustom: d => { const i = lib.items.find(x => x.id === d.id), day = C.curDay(); if (!i || !day) return; day.exercises.push(exFromItem(i)); C.savePlan(); C.closeSheet(); C.rerender(); C.toast('Adicionado — ajuste séries e reps em ⋯') },
+  usePickCustom: d => { const i = lib.items.find(x => x.id === d.id); if (i) C.addPicked(exFromItem(i)) },
   customDemo: d => { const day = C.curDay(), e = day && day.exercises.find(x => x.id === d.eid); if (e) customDetail(e) },
   tplOpen: d => tplSheet(d.k),
   tplSave: d => {
