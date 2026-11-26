@@ -1,4 +1,5 @@
 // ARES GYM — funcionalidades da Fase 1 (biblioteca própria, modelos, colar treino, intervalos, cardio, recados, convite, painel)
+// + MODELOS PREDEFINIDOS DE TREINO (Divisão ABCD) para professores/admin
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, orderBy, limit, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { $, esc, num, fmt, pad, keyOf, todayKey, parseKey, mondayOf, normalize, uid, clean, ic, ago, MUS } from './util.js';
 import * as E from './extras.js';
@@ -87,6 +88,61 @@ export function tplSheet(kind) {
   C.openSheet(`<h2>Modelos de ${isDiet ? 'dieta' : 'treino'}</h2><p class="muted" style="font-size:12.5px;line-height:1.55">Salve o que você montou e aplique em qualquer aluno depois. Abra outro aluno e toque em “Modelos”.</p>
   <div class="footer-actions">${isDiet ? '<button class="btn small secondary" data-act="tplSave" data-k="diet">Salvar dieta atual</button>' : '<button class="btn small secondary" data-act="tplSave" data-k="day">Salvar dia atual</button><button class="btn small secondary" data-act="tplSave" data-k="plan">Salvar ficha toda</button>'}</div>
   <div class="stack">${items.map(t => `<div class="card stack" style="padding:14px"><div class="row"><div><strong style="font-size:14px">${esc(t.name)}</strong><div class="muted" style="font-size:11.5px;margin-top:3px">${t.kind === 'day' ? 'Um dia · ' + (t.data.exercises || []).length + ' exercícios' : t.kind === 'plan' ? 'Ficha · ' + (t.data.days || []).length + ' dias' : 'Dieta · ' + ((t.data.meals || []).length) + ' refeições'}</div></div></div><div class="footer-actions"><button class="btn small" data-act="tplApply" data-id="${t.id}">Aplicar em ${esc(s.profile.name.split(' ')[0])}</button><button class="btn small ghost" data-act="tplDel" data-id="${t.id}">Excluir</button></div></div>`).join('') || '<div class="empty">Nenhum modelo salvo ainda.</div>'}</div><button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
+}
+
+/* ============ DIVISÃO ABCD (modelos predefinidos — professor/admin) ============ */
+const ABCD = [
+  { letter: 'A', name: 'Treino A · Peito, Ombro e Tríceps', focus: 'Empurrar — membros superiores', color: '#e74c3c', map: [
+    ['Supino reto', 'reps', { sets: '4', reps: '8–12' }],
+    ['Supino inclinado com halteres', 'reps', { sets: '3', reps: '10–12' }],
+    ['Crucifixo', 'reps', { sets: '3', reps: '12–15' }],
+    ['Desenvolvimento militar', 'reps', { sets: '3', reps: '8–12' }],
+    ['Elevação lateral', 'reps', { sets: '3', reps: '12–15' }],
+    ['Tríceps na polia', 'reps', { sets: '3', reps: '10–15' }]
+  ]},
+  { letter: 'B', name: 'Treino B · Costas e Bíceps', focus: 'Puxar — membros superiores', color: '#3498db', map: [
+    ['Barra fixa (ou puxada alta)', 'reps', { sets: '4', reps: '8–10' }],
+    ['Remada curvada', 'reps', { sets: '4', reps: '8–12' }],
+    ['Puxada na polia alta', 'reps', { sets: '3', reps: '10–12' }],
+    ['Remada baixa', 'reps', { sets: '3', reps: '10–12' }],
+    ['Rosca direta', 'reps', { sets: '3', reps: '10–12' }],
+    ['Rosca alternada', 'reps', { sets: '3', reps: '12' }]
+  ]},
+  { letter: 'C', name: 'Treino C · Pernas e Glúteos', focus: 'Empurrar — membros inferiores', color: '#2ecc71', map: [
+    ['Agachamento livre', 'reps', { sets: '4', reps: '8–10' }],
+    ['Leg press 45°', 'reps', { sets: '4', reps: '10–12' }],
+    ['Cadeira extensora', 'reps', { sets: '3', reps: '12–15' }],
+    ['Mesa flexora', 'reps', { sets: '4', reps: '10–12' }],
+    ['Elevação pélvica', 'reps', { sets: '3', reps: '12–15' }],
+    ['Panturrilha em pé', 'reps', { sets: '4', reps: '15–20' }]
+  ]},
+  { letter: 'D', name: 'Treino D · Glúteos, Core e Cardio', focus: 'Potência, centro e condicionamento', color: '#f39c12', map: [
+    ['Agachamento sumô', 'reps', { sets: '3', reps: '12' }],
+    ['Stiff', 'reps', { sets: '3', reps: '10–12' }],
+    ['Abdominal na polia', 'reps', { sets: '3', reps: '15' }],
+    ['Prancha', 'time', { sets: '3', secs: '45' }],
+    ['Escalador (mountain climber)', 'reps', { sets: '3', reps: '30s' }],
+    ['Corrida / bicicleta', 'cardio', { min: '15', km: '' }]
+  ]}
+];
+export function abcdSheet() {
+  const me = C.me();
+  if (me.role !== 'professor' && me.role !== 'admin') { C.toast('Disponível apenas para professores.'); return }
+  const s = G();
+  C.openSheet(`<h2>Divisão ABCD</h2><p class="muted" style="font-size:12.5px;line-height:1.55">Modelos prontos de treino. Escolha um dia e aplique em <b style="color:var(--text)">${esc((s.profile && s.profile.name) || 'aluno')}</b> — os exercícios entram na ficha da semana.</p>
+  <div class="stack">${ABCD.map(d => `<div class="card stack" style="padding:14px"><div class="row"><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:${d.color};color:#fff;display:grid;place-items:center;font-weight:900;font-size:15px;flex:none">${d.letter}</div><div><strong style="font-size:14px">${esc(d.name)}</strong><div class="muted" style="font-size:11.5px;margin-top:2px">${esc(d.focus)} · ${d.map.length} exercícios</div></div></div></div><div style="display:flex;gap:6px;flex-wrap:wrap">${d.map.map(e => `<span class="tag">${esc(e[0])}</span>`).join('')}</div><div class="footer-actions"><button class="btn small" data-act="abcdApply" data-id="${d.letter}">Aplicar na ficha</button><button class="btn small ghost" data-act="abcdView" data-id="${d.letter}">Ver detalhes</button></div></div>`).join('')}</div><button class="btn ghost block" data-act="closeSheet">Fechar` + `</button>`);
+}
+function abcdDay(letter) {
+  const d = ABCD.find(x => x.letter === letter); if (!d) return null;
+  return { id: uid(), name: d.name, color: d.color, exercises: d.map.map(([name, type, p]) => ({ id: uid(), name, type, ...E.defaultsFor(type), ...p, note: '', lib: '', group: '', video: '', howto: '' })) };
+}
+function abcdView(letter) {
+  const d = ABCD.find(x => x.letter === letter); if (!d) return;
+  C.openSheet(`<h2 style="display:flex;align-items:center;gap:10px"><span style="width:30px;height:30px;border-radius:9px;background:${d.color};color:#fff;display:grid;place-items:center;font-size:14px;font-weight:900">${d.letter}</span>${esc(d.name)}</h2><p class="muted" style="font-size:12.5px;line-height:1.6">${esc(d.focus)}</p><div class="kv" style="margin-top:6px">${d.map.map(([name, type, p]) => `<div style="padding:10px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px"><span>${esc(name)}</span><b style="font-size:12px">${esc(E.exSummary({ name, type, ...p }))}</b></div>`).join('')}</div><button class="btn block" data-act="abcdApply" data-id="${letter}">Aplicar este treino</button><button class="btn ghost block" data-act="closeSheet">Fechar</button>`);
+}
+function abcdApply(letter) {
+  const s = G(), day = abcdDay(letter); if (!day) return;
+  s.plan.days.push(day); C.setSel(day.id); C.savePlan(); C.closeSheet(); C.rerender(); C.toast(`Divisão ${letter} aplicada!`);
 }
 
 /* ============ colar treino ============ */
@@ -182,7 +238,7 @@ export function chatSheet() {
 async function sendChat() {
   const t = ($('chatIn').value || '').trim(); if (!t) return; const s = G(), me = C.me(), at = Date.now(); $('chatIn').value = '';
   try {
-    await setDoc(doc(collection(C.db, 'users', s.uid, 'messages')), { from: me.uid, fromName: me.name, text: t.slice(0, 1000), at });
+    await setDoc(doc(collection(C.db, 'users', s.uid, 'messages'), { from: me.uid, fromName: me.name, text: t.slice(0, 1000), at });
     if (s.self) { C.state().lastMsgAt = at; C.saveStateNow(); C.saveSummary() }
   } catch (e) { C.toast('Não foi possível enviar.') }
 }
@@ -272,5 +328,10 @@ export const ACT = {
   actDel: d => { if (!confirm('Excluir esta atividade?')) return; const s = G(); deleteDoc(doc(C.db, 'users', s.uid, 'activities', d.id)).catch(() => { }); s.acts = (s.acts || []).filter(a => a.id !== d.id); C.saveSummary(); C.closeSheet(); renderCardio() },
   chatOpen: () => chatSheet(),
   inviteOpen: () => inviteSheet(false), inviteNew: () => { if (confirm('Gerar um novo link? O link atual deixará de funcionar.')) inviteSheet(true) },
-  inviteCopy: () => { const v = $('invLink').value; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => C.toast('Link copiado!')).catch(() => { $('invLink').select(); C.toast('Selecione e copie o link.') }) }
+  inviteCopy: () => { const v = $('invLink').value; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => C.toast('Link copiado!')).catch(() => { $('invLink').select(); C.toast('Selecione e copie o link.') }) },
+
+  // AÇÕES DA DIVISÃO ABCD (professor/admin)
+  abcdOpen: () => abcdSheet(),
+  abcdView: d => abcdView(d.letter),
+  abcdApply: d => abcdApply(d.letter)
 };
