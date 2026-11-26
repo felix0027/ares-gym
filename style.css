@@ -272,26 +272,3 @@ svg.lc{width:100%;height:auto;display:block}
 .qrbox svg{width:100%;height:100%}
 @media(min-width:600px){.libgrid{grid-template-columns:repeat(3,minmax(0,1fr))}.stats{grid-template-columns:repeat(4,minmax(0,1fr))}.app{padding-left:24px;padding-right:24px}}
 @media(max-width:380px){.app{padding-left:14px;padding-right:14px}.stat .value{font-size:25px}.setrow,.sethead{gap:6px}}
-/* ---- destaque de celebração (ARES GYM) ---- */
-:root { --accent: #34d399; }
-[data-theme="light"] { --accent: #10b981; }
-
-.pr {
-  background: color-mix(in srgb, var(--accent) 12%, var(--s2));
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line2));
-}
-.exercise.done { border-color: var(--accent); }
-.weekstrip .wd.on i { background: var(--accent); }
-
-#hdr.saving .avatar { position: relative; }
-#hdr.saving .avatar::after {
-  content: "";
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 2px solid var(--line2);
-  border-top-color: var(--fg);
-  animation: spin .7s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
