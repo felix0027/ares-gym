@@ -23,6 +23,26 @@ let me = null, subj = null, page = '', sel = null, usersCache = [], unsubs = [],
 let inviteCode = new URLSearchParams(location.search).get('convite') || '', invite = null, soloOn = false;
 const FAKE = '@aresgym.app';
 const S = () => subj.state;
+
+// Chave que identifica "este treino concluído neste dia"
+function dayDoneKey(name) {
+  return todayKey() + ':' + normalize(name || '');
+}
+
+// O treino (pela ficha) já foi concluído hoje?
+function isDayDone(name) {
+  const k = dayDoneKey(name);
+  return !!(S().doneDays && S().doneDays[k]);
+}
+
+// Marca a conclusão e persiste no estado (vai para o Firestore
+// via saveState/saveStateNow, que já existem no projeto)
+function markDayDone(name) {
+  if (!S().doneDays) S().doneDays = {};
+  S().doneDays[dayDoneKey(name)] = Date.now();
+  saveStateNow();
+}
+
 const WD = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
 const ROLE = { aluno: 'Aluno', solo: 'Treino próprio', professor: 'Professor', admin: 'Administrador' };
 const selfRole = r => r === 'aluno' || r === 'solo';
@@ -33,7 +53,7 @@ const TEMPLATE = {
   'Sábado · Opcional': [['Tríceps francês', '2', '10–12'], ['Tríceps corda', '2', '10–15'], ['Rosca direta barra W', '3', '8–12'], ['Rosca martelo', '2', '10–12'], ['Mesa flexora', '2', '10–15'], ['Panturrilha sentado', '3', '12–15']]
 };
 const templatePlan = () => ({ days: Object.entries(TEMPLATE).map(([name, l]) => ({ id: uid(), name, exercises: l.map(([n, s, r]) => ({ id: uid(), name: n, sets: s, reps: r, note: '', lib: '' })) })) });
-const freshState = () => ({ v: 3, weights: [], foods: [], foodDate: todayKey(), proteinGoal: 130, proteinLog: {}, recentFoods: [], drafts: {}, settings: { autoRest: true, rest: 90 }, mealsDone: {} });
+const freshState = () => ({ v: 3, weights: [], foods: [], foodDate: todayKey(), proteinGoal: 130, proteinLog: {}, recentFoods: [], drafts: {}, settings: { autoRest: true, rest: 90 }, mealsDone: {}, doneDays: {} });
 
 const AERR = {
   'auth/invalid-credential': 'Login ou senha incorretos.', 'auth/wrong-password': 'Login ou senha incorretos.', 'auth/user-not-found': 'Login ou senha incorretos.', 'auth/invalid-email': 'Login inválido.',
@@ -242,7 +262,7 @@ function renderHome() {
   const btn = $('heroBtn'); btn.classList.remove('hidden');
   if (!days.length) { if (me.role === 'solo') { $('heroTitle').textContent = 'Monte o seu treino.'; $('heroText').textContent = 'Crie os dias e exercícios, ou cole um treino que você já tem (WhatsApp, PDF, anotação).'; btn.textContent = 'Montar meu treino' } else { $('heroTitle').textContent = 'Aguardando seu treino.'; $('heroText').textContent = 'Seu professor ainda vai montar a sua ficha. Assim que ele publicar, ela aparece aqui.'; btn.classList.add('hidden') } }
   else if (!sug) { $('heroTitle').textContent = 'Hoje é dia livre.'; $('heroText').textContent = 'Descanse ou escolha uma ficha para treinar mesmo assim.'; btn.textContent = 'Abrir meus treinos' }
-  else if (subj.sessions.some(s => s.day === tk && s.name === sug.name)) { $('heroTitle').textContent = 'Treino de hoje concluído.'; $('heroText').textContent = 'Boa! Agora é recuperar: proteína, água e sono.'; btn.textContent = 'Ver treinos' }
+  else if (isDayDone(sug.name)) { $('heroTitle').textContent = 'Treino de hoje concluído.'; $('heroText').textContent = 'Boa! Confira as outras fichas ou descanse — este treino só libera de novo amanhã.'; btn.textContent = 'Ver treinos' }
   else { const prog = S().drafts[sug.id] && S().drafts[sug.id].startedAt; $('heroTitle').textContent = sug.name.split(' · ')[1] || sug.name; $('heroText').textContent = sug.exercises.length + ' exercícios planejados para hoje.' + (prog ? ' Você já começou — continue de onde parou.' : ''); btn.textContent = prog ? 'Continuar treino' : 'Iniciar treino' }
   const lg = readLegacy();
   $('legacyBox').innerHTML = lg ? `<div class="card stack banner"><p><b>Encontramos dados antigos neste aparelho</b> (${(lg.sessions || []).length} treinos). Quer trazer o histórico para a sua conta?</p><div class="footer-actions"><button class="btn small" data-act="importLegacy">Importar histórico</button><button class="btn small ghost" data-act="skipLegacy">Agora não</button></div></div>` : '';
@@ -312,19 +332,74 @@ function updateWP() {
 setInterval(updateWP, 1000);
 function touch() { const d = draftOf(); if (!d.startedAt) d.startedAt = Date.now(); wake() }
 function finishWorkout() {
-  const day = curDay(); if (!day) return; const d = S().drafts[sel]; const entries = []; let vol = 0, total = 0, planned = 0; const prs = [];
+  const day = curDay();
+  if (!day) return;
+
+  // Bloqueio: treino já concluído hoje?
+  if (isDayDone(day.name)) {
+    openSheet(`<h2>Treino já concluído</h2><p class="muted" style="font-size:13.5px;line-height:1.6">Você já concluiu <b>${esc(day.name)}</b> hoje. Ele só poderá ser realizado novamente a partir de amanhã (próximo dia da semana).</p><button class="btn block" data-act="closeSheet">Entendi</button>`);
+    return;
+  }
+
+  const d = S().drafts[sel];
+  const entries = [];
+  let vol = 0, total = 0, planned = 0;
+  const prs = [];
+
   allEx().forEach(e => {
-    const t = E.typeOf(e); if (!e.extra) planned += nSets(e);
-    const rows = ((d && d.sets[e.id]) || []).filter(r => r.done || E.rowHasData(r)), sd = rows.map(r => ({ kg: num(r.kg), reps: num(r.reps), secs: num(r.secs), km: num(r.km), min: num(r.min), rounds: num(r.rounds) }));
-    let best = { kg: 0, reps: 0 }; if (t === 'reps') { sd.forEach(x => { if (x.kg > best.kg || (x.kg === best.kg && x.reps > best.reps)) best = x }); sd.forEach(x => { vol += x.kg * x.reps }) } total += sd.length;
-    if (best.kg > 0) { const prev = maxLoadBefore(e.name); if (prev > 0 && best.kg > prev) prs.push({ exercise: e.name, load: best.kg, prev }) }
-    entries.push({ eid: e.id, exercise: e.name, extra: !!e.extra, type: t, load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets || ''), done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || '' });
+    const t = E.typeOf(e);
+    if (!e.extra) planned += nSets(e);
+    const rows = ((d && d.sets[e.id]) || []).filter(r => r.done || E.rowHasData(r));
+    const sd = rows.map(r => ({ kg: num(r.kg), reps: num(r.reps), secs: num(r.secs), km: num(r.km), min: num(r.min), rounds: num(r.rounds) }));
+    let best = { kg: 0, reps: 0 };
+    if (t === 'reps') {
+      sd.forEach(x => { if (x.kg > best.kg || (x.kg === best.kg && x.reps > best.reps)) best = x });
+      sd.forEach(x => { vol += x.kg * x.reps });
+    }
+    total += sd.length;
+    if (best.kg > 0) {
+      const prev = maxLoadBefore(e.name);
+      if (prev > 0 && best.kg > prev) prs.push({ exercise: e.name, load: best.kg, prev });
+    }
+    entries.push({
+      eid: e.id, exercise: e.name, extra: !!e.extra, type: t,
+      load: best.kg || '', reps: best.reps || '', sets: String(sd.length || e.sets || ''),
+      done: sd.length > 0, setsData: sd, note: (d && d.notes && d.notes[e.id]) || ''
+    });
   });
-  if (!total) { alert('Marque ao menos uma série (ou preencha os campos) antes de concluir.'); return }
+
+  if (!total) {
+    openSheet(`<h2>Ainda não dá para concluir</h2><p class="muted" style="font-size:13.5px;line-height:1.6">Marque ao menos uma série (ou preencha os campos) antes de concluir.</p><button class="btn block" data-act="closeSheet">Ok</button>`);
+    return;
+  }
+
+  // Confirmação via sheet (substitui o comportamento direto)
+  openSheet(`<h2>Concluir treino?</h2><p class="muted" style="font-size:13.5px;line-height:1.6">Você realmente deseja concluir <b>${esc(day.name)}</b>?<br><br>Depois de concluir, <b>não será possível realizá-lo novamente</b> até o próximo dia da semana. Confirma?</p><div class="footer-actions"><button class="btn" id="cfOk">Sim, concluir</button><button class="btn ghost" data-act="closeSheet">Cancelar</button></div>`);
+
+  document.getElementById('cfOk').onclick = () => {
+    closeSheet();
+    doFinish(day, d, entries, vol, total, planned, prs);
+  };
+}
+
+// Lógica real de finalização (chamada só após confirmar)
+function doFinish(day, d, entries, vol, total, planned, prs) {
   const dur = d && d.startedAt ? Math.round((Date.now() - d.startedAt) / 1000) : 0;
-  const sess = { date: new Date().toISOString(), day: todayKey(), name: day.name, duration: dur, volume: Math.round(vol), sets: total, plan: planned, prs, entries, note: (d && d.note) || '' };
-  const ref = doc(collection(db, 'users', subj.uid, 'sessions')); setDoc(ref, clean(sess)).catch(e => toast('Não foi possível salvar na nuvem agora.'));
-  subj.sessions.push({ ...sess, id: ref.id }); delete S().drafts[sel]; saveStateNow(); saveSummary(); releaseWake(); dismissTimer(); renderWorkouts();
+  const sess = {
+    date: new Date().toISOString(), day: todayKey(), name: day.name,
+    duration: dur, volume: Math.round(vol), sets: total, plan: planned, prs,
+    entries, note: (d && d.note) || ''
+  };
+  const ref = doc(collection(db, 'users', subj.uid, 'sessions'));
+  setDoc(ref, clean(sess)).catch(e => toast('Não foi possível salvar na nuvem agora.'));
+
+  subj.sessions.push({ ...sess, id: ref.id });
+  delete S().drafts[sel];
+
+  // Impede nova conclusão do mesmo treino no mesmo dia
+  markDayDone(day.name);
+
+  saveStateNow(); saveSummary(); releaseWake(); dismissTimer(); renderWorkouts();
   openSheet(`<h2>Treino concluído</h2><div class="sum"><div><b>${dur ? Math.max(1, Math.round(dur / 60)) : '—'}</b><small>MINUTOS</small></div><div><b>${total}</b><small>SÉRIES</small></div><div><b>${fmt(vol, 0)}</b><small>KG DE VOLUME</small></div></div>${prs.length ? prs.map(p => `<div class="pr">Novo recorde: ${esc(p.exercise)} — ${fmt(p.load)} kg <span class="muted">(antes ${fmt(p.prev)} kg)</span></div>`).join('') : `<p class="muted" style="font-size:13px">Treino salvo no histórico.${me.role === 'aluno' ? ' Seu professor consegue ver suas anotações.' : ''}</p>`}<button class="btn block" data-act="closeSheet">Fechar</button>`);
 }
 function viewSession(id) {
