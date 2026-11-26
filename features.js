@@ -238,7 +238,12 @@ export function chatSheet() {
 async function sendChat() {
   const t = ($('chatIn').value || '').trim(); if (!t) return; const s = G(), me = C.me(), at = Date.now(); $('chatIn').value = '';
   try {
-    await setDoc(doc(collection(C.db, 'users', s.uid, 'messages'), { from: me.uid, fromName: me.name, text: t.slice(0, 1000), at });
+await setDoc(doc(collection(C.db, 'users', s.uid, 'messages')), {
+  from: me.uid,
+  fromName: me.name,
+  text: t.slice(0, 1000),
+  at
+});
     if (s.self) { C.state().lastMsgAt = at; C.saveStateNow(); C.saveSummary() }
   } catch (e) { C.toast('Não foi possível enviar.') }
 }
